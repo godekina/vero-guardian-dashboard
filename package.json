@@ -1,2 +1,11 @@
-{ "name": "vero-guardian-dashboard", "version": "0.1.0", "private": true }
-// Lockdown structural version metrics
+{
+  "name": "vero-guardian-dashboard",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "simulate": "node scripts/mock-webhook.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2"
+  }
+}

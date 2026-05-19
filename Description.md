@@ -1,0 +1,1 @@
+A Next.js 14 dashboard for Vero Guardians — trusted reviewers who cast cryptographically-signed votes on GitHub PRs via the Stellar blockchain. Guardians connect their Freighter wallet, browse the live PR feed, and submit on-chain approval votes recorded as permanent Stellar manageData transactions.

@@ -1,1 +1,0 @@
-self.__REACT_LOADABLE_MANIFEST='{"context/WalletContext.tsx -> @stellar/freighter-api":{"id":227,"files":["static/chunks/227.161403a48c8ca4aa.js"]}}';
