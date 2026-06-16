@@ -35,45 +35,46 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   const getToastStyles = (type: ToastType) => {
     switch (type) {
       case 'success':
-        return 'bg-emerald-900/95 border-emerald-700 text-emerald-200';
+        return 'bg-emerald-50 dark:bg-emerald-900/95 border-emerald-200 dark:border-emerald-700 text-emerald-800 dark:text-emerald-200';
       case 'error':
-        return 'bg-red-900/95 border-red-700 text-red-200';
+        return 'bg-red-50 dark:bg-red-900/95 border-red-200 dark:border-red-700 text-red-800 dark:text-red-200';
       case 'warning':
-        return 'bg-amber-900/95 border-amber-700 text-amber-200';
+        return 'bg-amber-50 dark:bg-amber-900/95 border-amber-200 dark:border-amber-700 text-amber-800 dark:text-amber-200';
       case 'info':
-        return 'bg-indigo-900/95 border-indigo-700 text-indigo-200';
+        return 'bg-indigo-50 dark:bg-indigo-900/95 border-indigo-200 dark:border-indigo-700 text-indigo-800 dark:text-indigo-200';
     }
   };
 
   const getToastIcon = (type: ToastType) => {
     switch (type) {
       case 'success':
-        return <CheckCircle2 className="w-5 h-5" />;
+        return <CheckCircle2 className="w-5 h-5" aria-hidden="true" />;
       case 'error':
-        return <XCircle className="w-5 h-5" />;
+        return <XCircle className="w-5 h-5" aria-hidden="true" />;
       case 'warning':
-        return <AlertCircle className="w-5 h-5" />;
+        return <AlertCircle className="w-5 h-5" aria-hidden="true" />;
       case 'info':
-        return <AlertCircle className="w-5 h-5" />;
+        return <AlertCircle className="w-5 h-5" aria-hidden="true" />;
     }
   };
 
   return (
     <ToastContext.Provider value={{ showToast }}>
       {children}
-      <div className="fixed bottom-4 right-4 z-50 flex flex-col gap-2">
+      <div className="fixed bottom-4 right-4 z-50 flex flex-col gap-2" role="status" aria-live="polite">
         {toasts.map((toast) => (
           <div
             key={toast.id}
             className={`flex items-center gap-3 px-4 py-3 rounded-lg border shadow-lg animate-in slide-in-from-right-5 fade-in ${getToastStyles(toast.type)}`}
           >
             {getToastIcon(toast.type)}
-            <p className="flex-1">{toast.message}</p>
+            <p className="flex-1 text-sm font-medium">{toast.message}</p>
             <button
               onClick={() => removeToast(toast.id)}
-              className="opacity-70 hover:opacity-100 transition-opacity"
+              aria-label="Close notification"
+              className="opacity-70 hover:opacity-100 transition-opacity focus:outline-none focus:ring-2 focus:ring-indigo-500 rounded p-0.5"
             >
-              <X className="w-4 h-4" />
+              <X className="w-4 h-4" aria-hidden="true" />
             </button>
           </div>
         ))}
