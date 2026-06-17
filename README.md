@@ -450,63 +450,85 @@ export function ReputationBadge() {
 
 ### Wallet Context
 
-`WalletContext` holds the connected Guardian's Stellar public key and exposes it globally via a custom hook:
+The `WalletContext` provides a resilient Freighter wallet connection state with localStorage persistence and an easy-to-use hook API.
 
-```tsx
-// src/context/WalletContext.tsx
-'use client';
-import { createContext, useContext, useState, ReactNode } from 'react';
+Key features:
 
-interface WalletCtx {
-  publicKey: string | null;
-  setPublicKey: (key: string | null) => void;
-}
+- Persistent `publicKey` stored under `vero_wallet_publicKey` in `localStorage`.
+- `freighter-account-change` event listener to react to account switches in the Freighter extension.
+- `connect()` uses `@stellar/freighter-api`'s `getPublicKey()` and surfaces errors.
+- `disconnect()` clears state and stored key.
+- Exposes `isLoading` and `error` states for UI feedback.
 
-const WalletContext = createContext<WalletCtx>({ publicKey: null, setPublicKey: () => {} });
+API
 
-export function WalletProvider({ children }: { children: ReactNode }) {
-  const [publicKey, setPublicKey] = useState<string | null>(null);
-  return (
-    <WalletContext.Provider value={{ publicKey, setPublicKey }}>
-      {children}
-    </WalletContext.Provider>
-  );
-}
+- `WalletProvider` — React provider component that must wrap your app (already mounted in the root layout).
+- `useWallet()` — Hook returning the wallet API:
 
-export const useWallet = () => useContext(WalletContext);
+```ts
+type UseWallet = {
+  publicKey: string | null;       // Stellar public key when connected
+  isConnected: boolean;          // shorthand for !!publicKey
+  isLoading: boolean;            // true while connecting or initializing
+  error: string | null;          // human-friendly error message
+  connect(): Promise<void>;      // prompts Freighter to return public key
+  disconnect(): void;            // clears key and localStorage
+};
 ```
 
-The `ConnectButton` component drives the connect/disconnect flow:
+Constants
+
+- Storage key: `vero_wallet_publicKey`
+- Freighter event: `freighter-account-change`
+
+Example usage
+
+Wrap your application (already done in the RootLayout):
 
 ```tsx
-// src/components/ConnectButton.tsx
-'use client';
-import { getPublicKey } from '@stellar/freighter-api';
-import { useWallet } from '@/context/WalletContext';
+// src/app/layout.tsx
+import { WalletProvider } from '@/context/WalletContext';
+
+export default function RootLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <html lang="en">
+      <body>
+        <WalletProvider>{children}</WalletProvider>
+      </body>
+    </html>
+  );
+}
+```
+
+Consume the hook in components:
+
+```tsx
+import { useWallet } from '@/hooks/useWallet';
 
 export function ConnectButton() {
-  const { publicKey, setPublicKey } = useWallet();
-
-  async function connect() {
-    const key = await getPublicKey();
-    setPublicKey(key);
-  }
+  const { publicKey, isLoading, error, connect, disconnect } = useWallet();
 
   if (publicKey) {
     return (
-      <button onClick={() => setPublicKey(null)} className="text-sm text-red-500">
+      <button onClick={disconnect} className="text-sm text-red-500">
         Disconnect ({publicKey.slice(0, 6)}…)
       </button>
     );
   }
 
   return (
-    <button onClick={connect} className="rounded bg-indigo-600 px-4 py-2 text-white">
-      Connect Wallet
+    <button onClick={connect} disabled={isLoading} className="rounded bg-indigo-600 px-4 py-2 text-white">
+      {isLoading ? 'Connecting…' : 'Connect Wallet'}
     </button>
   );
 }
 ```
+
+Notes
+
+- If Freighter is not installed, `connect()` will set `error` to a helpful message.
+- The provider initializes from `localStorage` on mount so reconnects survive page reloads.
+- The `freighter-account-change` event is handled to clear stored keys when the user switches accounts in Freighter.
 
 ---
 
