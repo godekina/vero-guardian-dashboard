@@ -87,7 +87,7 @@ function TestComponent() {
       <div data-testid="is-connected">{isConnected ? 'Connected' : 'Disconnected'}</div>
       <div data-testid="is-loading">{isLoading ? 'Loading' : 'Ready'}</div>
       <div data-testid="error">{error || 'No error'}</div>
-      <button onClick={connect} data-testid="connect-btn">
+      <button onClick={() => connect()} data-testid="connect-btn">
         Connect
       </button>
       <button onClick={disconnect} data-testid="disconnect-btn">

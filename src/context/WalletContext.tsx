@@ -9,37 +9,21 @@ import {
   useState,
   type ReactNode,
 } from 'react';
-import * as freighterApi from '@stellar/freighter-api';
-
-declare global {
-  interface Window {
-    freighter?: unknown;
-  }
-}
+import {
+  DEFAULT_WALLET_PROVIDER_ID,
+  freighterClient,
+  getWalletProvider,
+  isFreighterAvailable,
+  isWalletProviderId,
+  listWalletProviders,
+  readCurrentFreighterPublicKey,
+  type WalletProviderId,
+  type WalletProviderInfo,
+} from '@/lib/wallets';
 
 const STORAGE_KEY = 'vero_wallet_publicKey';
+const PROVIDER_STORAGE_KEY = 'vero_wallet_provider';
 const FREIGHTER_EVENT = 'freighter-account-change';
-
-interface FreighterResultError {
-  message?: string;
-}
-
-interface WalletWatcher {
-  watch: (callback: (params: { address?: string; error?: FreighterResultError }) => void) => {
-    error?: FreighterResultError;
-  };
-  stop: () => void;
-}
-
-interface FreighterApiCompat {
-  getPublicKey?: () => Promise<string>;
-  isConnected?: () => Promise<{ isConnected: boolean; error?: FreighterResultError }>;
-  getAddress?: () => Promise<{ address: string; error?: FreighterResultError }>;
-  requestAccess?: () => Promise<{ address: string; error?: FreighterResultError }>;
-  WatchWalletChanges?: new (timeout?: number) => WalletWatcher;
-}
-
-const freighterClient = freighterApi as FreighterApiCompat;
 
 interface WalletContextType {
   publicKey: string | null;
@@ -47,7 +31,12 @@ interface WalletContextType {
   isLoading: boolean;
   error: string | null;
   reputation: number;
-  connect: () => Promise<void>;
+  /** The provider used for the current connection, if any. */
+  activeProvider: WalletProviderId | null;
+  /** Detected Stellar wallet providers and their availability. */
+  availableProviders: WalletProviderInfo[];
+  /** Connect with a specific provider; defaults to Freighter when omitted. */
+  connect: (providerId?: WalletProviderId) => Promise<void>;
   disconnect: () => void;
 }
 
@@ -68,89 +57,36 @@ function getErrorMessage(error: unknown, fallback: string): string {
   return fallback;
 }
 
-function isFreighterAvailable(): boolean {
-  return typeof window !== 'undefined' && Boolean(window.freighter);
-}
-
-async function requestFreighterPublicKey(): Promise<string> {
-  if (typeof freighterClient.requestAccess === 'function') {
-    const access = await freighterClient.requestAccess();
-    if (access.error) {
-      throw new Error(
-        getErrorMessage(access.error, 'Freighter could not grant wallet access. Open Freighter and try again.')
-      );
-    }
-
-    if (!access.address) {
-      throw new Error('Freighter did not return a wallet address. Unlock Freighter and try again.');
-    }
-
-    return access.address;
-  }
-
-  if (typeof freighterClient.getPublicKey === 'function') {
-    const publicKey = await freighterClient.getPublicKey();
-    if (!publicKey) {
-      throw new Error('Freighter did not return a wallet public key');
-    }
-    return publicKey;
-  }
-
-  throw new Error('Freighter wallet API is unavailable');
-}
-
-async function readCurrentFreighterPublicKey(): Promise<string | null> {
-  if (!isFreighterAvailable()) {
-    return null;
-  }
-
-  if (
-    typeof freighterClient.isConnected === 'function' &&
-    typeof freighterClient.getAddress === 'function'
-  ) {
-    const connection = await freighterClient.isConnected();
-    if (connection.error) {
-      throw new Error(
-        getErrorMessage(connection.error, 'Unable to verify Freighter wallet connection.')
-      );
-    }
-
-    if (!connection.isConnected) {
-      return null;
-    }
-
-    const address = await freighterClient.getAddress();
-    if (address.error) {
-      throw new Error(getErrorMessage(address.error, 'Unable to read Freighter wallet address.'));
-    }
-
-    return address.address || null;
-  }
-
-  if (typeof freighterClient.getPublicKey === 'function') {
-    const publicKey = await freighterClient.getPublicKey();
-    return publicKey || null;
-  }
-
-  return null;
-}
-
 export function WalletProvider({ children }: { children: ReactNode }) {
   const [publicKey, setPublicKey] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [reputation, setReputation] = useState(0);
+  const [activeProvider, setActiveProvider] = useState<WalletProviderId | null>(null);
+  const [availableProviders, setAvailableProviders] = useState<WalletProviderInfo[]>([]);
 
-  const applyVerifiedPublicKey = useCallback((nextPublicKey: string) => {
-    localStorage.setItem(STORAGE_KEY, nextPublicKey);
-    setPublicKey(nextPublicKey);
-    setReputation(0);
-    setError(null);
+  // Detect installed wallet extensions once on the client.
+  useEffect(() => {
+    setAvailableProviders(listWalletProviders());
   }, []);
+
+  const applyVerifiedPublicKey = useCallback(
+    (nextPublicKey: string, providerId: WalletProviderId = DEFAULT_WALLET_PROVIDER_ID) => {
+      localStorage.setItem(STORAGE_KEY, nextPublicKey);
+      localStorage.setItem(PROVIDER_STORAGE_KEY, providerId);
+      setPublicKey(nextPublicKey);
+      setActiveProvider(providerId);
+      setReputation(0);
+      setError(null);
+    },
+    []
+  );
 
   const clearWalletState = useCallback((nextError: string | null = null) => {
     localStorage.removeItem(STORAGE_KEY);
+    localStorage.removeItem(PROVIDER_STORAGE_KEY);
     setPublicKey(null);
+    setActiveProvider(null);
     setReputation(0);
     setError(nextError);
   }, []);
@@ -185,6 +121,15 @@ export function WalletProvider({ children }: { children: ReactNode }) {
 
       try {
         const storedPublicKey = localStorage.getItem(STORAGE_KEY);
+        const storedProvider = localStorage.getItem(PROVIDER_STORAGE_KEY);
+
+        // Only Freighter supports silent session restore; other providers
+        // require an explicit reconnect after a reload.
+        if (storedProvider && storedProvider !== DEFAULT_WALLET_PROVIDER_ID) {
+          clearWalletState();
+          return;
+        }
+
         const currentPublicKey = await readCurrentFreighterPublicKey();
         if (!isMounted) {
           return;
@@ -254,25 +199,29 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     };
   }, [applyVerifiedPublicKey, clearWalletState, refreshVerifiedWallet]);
 
-  const connect = useCallback(async () => {
-    setIsLoading(true);
-    setError(null);
+  const connect = useCallback(
+    async (providerArg?: WalletProviderId) => {
+      // Guard against being used directly as an event handler (onClick={connect}),
+      // which would otherwise pass a DOM event in place of a provider id.
+      const providerId = isWalletProviderId(providerArg) ? providerArg : DEFAULT_WALLET_PROVIDER_ID;
 
-    try {
-      if (!isFreighterAvailable()) {
-        throw new Error('Freighter wallet is not installed');
+      setIsLoading(true);
+      setError(null);
+
+      try {
+        const provider = getWalletProvider(providerId);
+        const nextPublicKey = await provider.connect();
+        applyVerifiedPublicKey(nextPublicKey, providerId);
+      } catch (connectError) {
+        const message = getErrorMessage(connectError, 'Failed to connect wallet');
+        console.error('Wallet connection error:', connectError);
+        clearWalletState(message);
+      } finally {
+        setIsLoading(false);
       }
-
-      const nextPublicKey = await requestFreighterPublicKey();
-      applyVerifiedPublicKey(nextPublicKey);
-    } catch (connectError) {
-      const message = getErrorMessage(connectError, 'Failed to connect wallet');
-      console.error('Wallet connection error:', connectError);
-      clearWalletState(message);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [applyVerifiedPublicKey, clearWalletState]);
+    },
+    [applyVerifiedPublicKey, clearWalletState]
+  );
 
   const disconnect = useCallback(() => {
     clearWalletState();
@@ -285,10 +234,12 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       isLoading,
       error,
       reputation,
+      activeProvider,
+      availableProviders,
       connect,
       disconnect,
     }),
-    [connect, disconnect, error, isLoading, publicKey, reputation]
+    [activeProvider, availableProviders, connect, disconnect, error, isLoading, publicKey, reputation]
   );
 
   return <WalletContext.Provider value={value}>{children}</WalletContext.Provider>;

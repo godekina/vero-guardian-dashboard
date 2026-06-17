@@ -91,7 +91,7 @@ Each Guardian's trust score is tracked as `vero_reputation` on their Stellar acc
 <RootLayout>
   └── <WalletContext.Provider>
         └── <RoleContext.Provider>
-              ├── <ConnectButton />          # Freighter wallet connect/disconnect
+              ├── <ConnectButton />          # Multi-wallet picker (Freighter, Rabet)
               ├── <PRFeed />                 # Fetches open PRs, renders list
               │     └── <VoteCard pr={...} />  # Per-PR card with guarded vote button
               ├── <TransactionFeed />        # Live Horizon transaction stream
@@ -214,7 +214,8 @@ vero-guardian-dashboard/
 │   ├── context/
 │   │   └── WalletContext.tsx   # Global wallet state (publicKey)
 │   ├── lib/
-│   │   └── stellar-interact.ts # castVote(), getReputation()
+│   │   ├── stellar-interact.ts # castVote(), getReputation()
+│   │   └── wallets/            # Stellar wallet provider adapters + registry
 │   └── utils/
 │       └── stellar-interact.ts # Utility re-exports
 ├── .env.example                # Required environment variables
@@ -457,16 +458,21 @@ export function ReputationBadge() {
 
 ### Wallet Context
 
-The `WalletContext` provides a resilient Freighter wallet connection state with localStorage-backed persistence that is verified against the current Freighter address before use.
+The `WalletContext` provides a resilient Stellar wallet connection state with localStorage-backed persistence, supporting multiple standard wallet providers through a pluggable adapter registry (`src/lib/wallets/`).
 
 Key features:
 
-- Stores the verified `publicKey` under `vero_wallet_publicKey` in `localStorage`.
-- Verifies persisted keys against Freighter `isConnected()`/`getAddress()` before restoring UI state.
+- **Multi-wallet support** — connect via any registered provider (currently [Freighter](https://www.freighter.app/) and [Rabet](https://rabet.io/)). `ConnectButton` renders a picker of detected wallets.
+- Stores the verified `publicKey` under `vero_wallet_publicKey` and the active provider id under `vero_wallet_provider` in `localStorage`.
+- Verifies persisted Freighter keys against `isConnected()`/`getAddress()` before restoring UI state; non-Freighter sessions require an explicit reconnect after reload.
 - `WatchWalletChanges` and `freighter-account-change` listeners clear or update wallet state when the active Freighter account changes.
-- `connect()` uses `@stellar/freighter-api`'s `requestAccess()` and surfaces errors.
-- `disconnect()` clears state and stored key.
-- Exposes `isLoading`, `error`, and `reputation` states for UI feedback.
+- `connect(providerId?)` resolves the chosen adapter (defaults to Freighter) and surfaces errors; passing an invalid value safely falls back to Freighter.
+- `disconnect()` clears state and stored keys.
+- Exposes `isLoading`, `error`, `reputation`, `activeProvider`, and `availableProviders` for UI feedback.
+
+#### Adding a wallet provider
+
+Implement the `StellarWalletProvider` interface (`id`, `name`, `isAvailable()`, `connect()`) in a new module under `src/lib/wallets/`, then add it to the `walletProviders` array in `src/lib/wallets/index.ts`. The picker and context pick it up automatically.
 
 API
 
@@ -475,19 +481,22 @@ API
 
 ```ts
 type UseWallet = {
-  publicKey: string | null;       // Stellar public key when connected
-  isConnected: boolean;          // shorthand for !!publicKey
-  isLoading: boolean;            // true while connecting or initializing
-  error: string | null;          // human-friendly error message
-  reputation: number;            // current reputation score shown in the dashboard
-  connect(): Promise<void>;      // prompts Freighter to return public key
-  disconnect(): void;            // clears key and localStorage
+  publicKey: string | null;              // Stellar public key when connected
+  isConnected: boolean;                  // shorthand for !!publicKey
+  isLoading: boolean;                    // true while connecting or initializing
+  error: string | null;                  // human-friendly error message
+  reputation: number;                    // current reputation score shown in the dashboard
+  activeProvider: WalletProviderId | null; // provider backing the connection
+  availableProviders: WalletProviderInfo[]; // detected wallets + availability
+  connect(providerId?: WalletProviderId): Promise<void>; // defaults to Freighter
+  disconnect(): void;                    // clears key and localStorage
 };
 ```
 
 Constants
 
-- Storage key: `vero_wallet_publicKey`
+- Public key storage key: `vero_wallet_publicKey`
+- Active provider storage key: `vero_wallet_provider`
 - Freighter event: `freighter-account-change`
 
 Example usage

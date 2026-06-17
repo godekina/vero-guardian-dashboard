@@ -48,6 +48,10 @@ export const resources = {
         connecting: 'Connecting wallet...',
         disconnect: 'Disconnect wallet',
         loading: 'Loading...',
+        choose: 'Choose a wallet',
+        notInstalled: 'Not installed',
+        noProviders: 'No Stellar wallets detected. Install Freighter or Rabet.',
+        providerAria: 'Connect with {{name}}',
       },
       theme: {
         ariaLabel: 'Current theme is {{theme}}. Click to change theme.',
@@ -220,6 +224,10 @@ export const resources = {
         connecting: 'Conectando billetera...',
         disconnect: 'Desconectar billetera',
         loading: 'Cargando...',
+        choose: 'Elige una billetera',
+        notInstalled: 'No instalada',
+        noProviders: 'No se detectaron billeteras Stellar. Instala Freighter o Rabet.',
+        providerAria: 'Conectar con {{name}}',
       },
       theme: {
         ariaLabel: 'El tema actual es {{theme}}. Haz clic para cambiar el tema.',
@@ -392,6 +400,10 @@ export const resources = {
         connecting: 'Connexion du portefeuille...',
         disconnect: 'Deconnecter le portefeuille',
         loading: 'Chargement...',
+        choose: 'Choisir un portefeuille',
+        notInstalled: 'Non installe',
+        noProviders: 'Aucun portefeuille Stellar detecte. Installez Freighter ou Rabet.',
+        providerAria: 'Connecter avec {{name}}',
       },
       theme: {
         ariaLabel: 'Le theme actuel est {{theme}}. Cliquez pour changer de theme.',
