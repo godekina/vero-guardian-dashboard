@@ -4,6 +4,7 @@ import type { ReactElement } from 'react';
 import { Activity, ArrowRight, CheckCircle2, Code2, Shield, Trophy } from 'lucide-react';
 import ConnectButton from '@/components/ConnectButton';
 import ErrorBoundary from '@/components/ErrorBoundary';
+import GlobalStateSearch from '@/components/GlobalStateSearch';
 import { AccessControl } from '@/components/Guard';
 import NetworkStatus from '@/components/NetworkStatus';
 import PRFeed from '@/components/PRFeed';
@@ -172,6 +173,12 @@ export default function Home(): ReactElement {
 
           {/* Right Column - Admin Management & Quick Actions */}
           <div className="space-y-6">
+            <ErrorBoundary>
+              <div className="bg-white dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-lg">
+                <GlobalStateSearch />
+              </div>
+            </ErrorBoundary>
+
             <AccessControl roles={['admin']}>
               {/* Admin Management */}
               <ErrorBoundary>
