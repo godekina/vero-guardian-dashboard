@@ -7,12 +7,12 @@ type ToastType = 'success' | 'error' | 'warning' | 'info';
 
 interface Toast {
   id: string;
-  message: string;
+  message: ReactNode;
   type: ToastType;
 }
 
 interface ToastContextType {
-  showToast: (message: string, type: ToastType) => void;
+  showToast: (message: ReactNode, type: ToastType) => void;
 }
 
 const ToastContext = createContext<ToastContextType | undefined>(undefined);
@@ -20,7 +20,7 @@ const ToastContext = createContext<ToastContextType | undefined>(undefined);
 export function ToastProvider({ children }: { children: ReactNode }) {
   const [toasts, setToasts] = useState<Toast[]>([]);
 
-  function showToast(message: string, type: ToastType = 'info') {
+  function showToast(message: ReactNode, type: ToastType = 'info') {
     const id = Math.random().toString(36).substring(2, 9);
     setToasts((prev) => [...prev, { id, message, type }]);
     setTimeout(() => {

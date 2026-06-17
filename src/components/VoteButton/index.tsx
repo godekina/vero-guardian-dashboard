@@ -3,6 +3,7 @@
 import type { ReactElement } from 'react';
 import { useState } from 'react';
 import { castVote } from '@/services/contractClient';
+import { getStellarExplorerTxUrl } from '@/lib/stellar-expert';
 import { useToast } from '@/components/Toast';
 import { useRole } from '@/context/RoleContext';
 
@@ -133,7 +134,8 @@ export default function VoteButton({ prId, publicKey }: VoteButtonProps): ReactE
     try {
       const hash = await castVote(prId, publicKey);
       setVoted(true);
-      showToast(`Vote recorded — tx ${hash.slice(0, 8)}…`, 'success');
+      const explorerUrl = getStellarExplorerTxUrl(hash);
+showToast(`Vote recorded — <a href="${explorerUrl}" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">tx ${hash.slice(0, 8)}…</a>`, 'success');
     } catch (err) {
       showToast(err instanceof Error ? err.message : 'Vote failed', 'error');
     } finally {
