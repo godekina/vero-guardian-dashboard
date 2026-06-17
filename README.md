@@ -277,7 +277,7 @@ Expected relayer output:
 [relayer] Listening on port 3000
 [webhook] Merged PR #42 with wave-contribution — registering on chain
 [stellar] Registering PR #42 on testnet
-[stellar] Source key loaded: YES
+[stellar] Source key loaded: YES (hardware-backed vault)
 [stellar] Transaction compiled: {
   "operation": "manageData",
   "key": "task_42",
@@ -311,11 +311,13 @@ NEXT_PUBLIC_HORIZON_URL=https://horizon-testnet.stellar.org
 # Optional Horizon account that stores admin/guardian role map entries
 NEXT_PUBLIC_ROLE_REGISTRY_ACCOUNT=G...
 
-# Relayer: Guardian's Stellar secret key (server-side only, never expose to browser)
-STELLAR_SECRET_KEY=S...
-
 # Relayer: target network
 STELLAR_NETWORK=testnet
+
+# Relayer vault metadata. Store only encrypted vault records in env/config.
+RELAYER_VAULT_KEY_PROVIDER=hardware
+RELAYER_VAULT_HARDWARE_BACKED=true
+RELAYER_VAULT_STELLAR_SECRET_KEY={...encrypted vault record...}
 ```
 
 | Variable | Description | Default |
@@ -323,10 +325,12 @@ STELLAR_NETWORK=testnet
 | `NEXT_PUBLIC_SOROBAN_RPC_URL` | Soroban RPC endpoint | `https://soroban-testnet.stellar.org` |
 | `NEXT_PUBLIC_HORIZON_URL` | Stellar Horizon REST API | `https://horizon-testnet.stellar.org` |
 | `NEXT_PUBLIC_ROLE_REGISTRY_ACCOUNT` | Optional Horizon account containing admin/guardian role map entries | connected wallet account |
-| `STELLAR_SECRET_KEY` | Relayer signing key (server only) | — |
 | `STELLAR_NETWORK` | `testnet` or `mainnet` | `testnet` |
+| `RELAYER_VAULT_KEY_PROVIDER` | Hardware-backed vault key provider identifier | `hardware` |
+| `RELAYER_VAULT_HARDWARE_BACKED` | Must be `true` when relayer vault keys are backed by OS/HSM storage | — |
+| `RELAYER_VAULT_STELLAR_SECRET_KEY` | Encrypted vault record for the relayer signing key | — |
 
-> **Security:** `STELLAR_SECRET_KEY` must never be prefixed with `NEXT_PUBLIC_`. It is only read by the Node.js relayer process, never sent to the browser.
+> **Security:** Do not store raw relayer secrets such as `STELLAR_SECRET_KEY` in `.env` files. Store encrypted vault records and unwrap them with a hardware-backed provider.
 
 ---
 
@@ -727,11 +731,14 @@ The `stellar.js` module handles transaction compilation:
 
 ```javascript
 // stellar.js
+const { getVaultSecretStatus } = require('./src/services/vault-node');
+
 async function registerTaskOnChain(githubId) {
-  const secretKey = process.env.STELLAR_SECRET_KEY || '(not set)';
+  const keyStatus = getVaultSecretStatus('STELLAR_SECRET_KEY');
   const network = process.env.STELLAR_NETWORK || 'testnet';
 
   console.log(`[stellar] Registering PR #${githubId} on ${network}`);
+  console.log(`[stellar] Source key loaded: ${keyStatus.configured ? 'YES (vault)' : 'NO (vault entry missing)'}`);
 
   const txPayload = {
     operation: 'manageData',

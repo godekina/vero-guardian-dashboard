@@ -1,9 +1,14 @@
+const { getVaultSecretStatus } = require('./src/services/vault-node');
+
 async function registerTaskOnChain(githubId) {
-  const secretKey = process.env.STELLAR_SECRET_KEY || '(not set)';
+  const keyStatus = getVaultSecretStatus('STELLAR_SECRET_KEY');
   const network = process.env.STELLAR_NETWORK || 'testnet';
 
   console.log(`[stellar] Registering PR #${githubId} on ${network}`);
-  console.log(`[stellar] Source key loaded: ${secretKey !== '(not set)' ? 'YES' : 'NO (using env default)'}`);
+  if (keyStatus.warning) {
+    console.warn(`[stellar] ${keyStatus.warning}`);
+  }
+  console.log(`[stellar] Source key loaded: ${formatVaultStatus(keyStatus)}`);
 
   // Simulate transaction compilation
   const txPayload = {
@@ -18,6 +23,14 @@ async function registerTaskOnChain(githubId) {
   console.log(`[stellar] ✓ Task PR #${githubId} registered — awaiting submission`);
 
   return { txPayload, status: 'simulated' };
+}
+
+function formatVaultStatus(keyStatus) {
+  if (!keyStatus.configured) {
+    return 'NO (vault entry missing)';
+  }
+
+  return keyStatus.hardwareBacked ? 'YES (hardware-backed vault)' : 'YES (encrypted vault)';
 }
 
 module.exports = { registerTaskOnChain };
