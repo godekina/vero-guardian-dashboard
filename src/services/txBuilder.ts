@@ -1,10 +1,43 @@
 import * as StellarSdk from '@stellar/stellar-sdk';
 import { signTransaction } from '@stellar/freighter-api';
+import { z } from 'zod';
 
 const DEFAULT_HORIZON_URL =
   process.env.NEXT_PUBLIC_HORIZON_URL ?? 'https://horizon-testnet.stellar.org';
 const DEFAULT_NETWORK_PASSPHRASE = StellarSdk.Networks.TESTNET;
 const DEFAULT_TIMEOUT_SECONDS = 30;
+
+// Zod schemas for validation
+const BuildBatchTransactionRequestSchema = z.object({
+  sourceAccount: z.string().trim().min(1, 'Source account required').refine(
+    (val) => StellarSdk.StrKey.isValidEd25519PublicKey(val),
+    'Invalid source account public key'
+  ),
+  operations: z.array(z.any()).min(1, 'At least one operation required'),
+  networkPassphrase: z.string().trim().optional(),
+  fee: z.union([z.string(), z.number()]).optional(),
+  memo: z.any().optional(),
+  timeout: z.number().int().nonnegative().optional(),
+  sequence: z.string().trim().optional(),
+  refreshSequence: z.boolean().optional(),
+});
+
+const SignPreparedBatchTransactionRequestSchema = z.object({
+  preparedTransaction: z.object({
+    unsignedEnvelopeXdr: z.string().trim().min(1),
+    networkPassphrase: z.string().trim().min(1),
+    sourceAccount: z.string().trim().min(1),
+  }),
+  signer: z.function().optional(),
+});
+
+const BroadcastSignedBatchTransactionRequestSchema = z.object({
+  signedTransaction: z.object({
+    signedEnvelopeXdr: z.string().trim().min(1),
+    networkPassphrase: z.string().trim().min(1),
+    sourceAccount: z.string().trim().min(1),
+  }),
+});
 
 type HorizonServer = InstanceType<typeof StellarSdk.Horizon.Server>;
 type HorizonAccount = Awaited<ReturnType<HorizonServer['loadAccount']>>;
@@ -291,6 +324,42 @@ export class BatchTransactionBuilder {
   async buildBatchTransaction(
     request: BuildBatchTransactionRequest,
   ): Promise<PreparedBatchTransaction> {
+    // Validate request with Zod first
+    try {
+      BuildBatchTransactionRequestSchema.parse(request);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        const firstError = error.issues[0];
+        // Map Zod errors to existing error codes
+        if (firstError.path.includes('sourceAccount')) {
+          throw new BatchTxBuilderError(
+            'MISSING_SOURCE_ACCOUNT',
+            firstError.message,
+            error,
+          );
+        }
+        if (firstError.path.includes('operations')) {
+          throw new BatchTxBuilderError(
+            'EMPTY_OPERATIONS',
+            firstError.message,
+            error,
+          );
+        }
+        if (firstError.path.includes('fee')) {
+          throw new BatchTxBuilderError('INVALID_FEE', firstError.message, error);
+        }
+        if (firstError.path.includes('timeout')) {
+          throw new BatchTxBuilderError(
+            'INVALID_TIMEOUT',
+            firstError.message,
+            error,
+          );
+        }
+        throw new BatchTxBuilderError('INVALID_OPERATION', firstError.message, error);
+      }
+      throw error;
+    }
+    
     const sourceAccount = trimRequired(
       request.sourceAccount,
       'MISSING_SOURCE_ACCOUNT',

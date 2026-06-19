@@ -1,4 +1,5 @@
 import * as StellarSdk from '@stellar/stellar-sdk';
+import { z } from 'zod';
 import type { StellarOperation } from '@/services/txBuilder';
 
 /**
@@ -13,32 +14,6 @@ export type VoteChoice = 'approve' | 'reject';
 export const OPERATION_TYPES = ['vote', 'data', 'payment'] as const;
 export type OperationType = (typeof OPERATION_TYPES)[number];
 
-export interface VoteOperationDraft {
-  type: 'vote';
-  prId: string;
-  choice: VoteChoice;
-}
-
-export interface DataOperationDraft {
-  type: 'data';
-  name: string;
-  value: string;
-}
-
-export interface PaymentOperationDraft {
-  type: 'payment';
-  destination: string;
-  amount: string;
-}
-
-export type OperationDraft = VoteOperationDraft | DataOperationDraft | PaymentOperationDraft;
-
-export interface QueuedOperation {
-  /** Stable client-side id used for React keys and local-state edits. */
-  id: string;
-  draft: OperationDraft;
-}
-
 /** Stellar caps a single transaction at 100 operations. */
 export const MAX_BATCH_OPERATIONS = 100;
 /** Horizon rejects manageData entries whose name or value exceeds 64 bytes. */
@@ -46,6 +21,69 @@ export const MAX_DATA_NAME_BYTES = 64;
 export const MAX_DATA_VALUE_BYTES = 64;
 /** Stellar amounts allow up to seven decimal places (stroops). */
 export const MAX_AMOUNT_DECIMALS = 7;
+
+// Zod schemas
+function byteLength(value: string): number {
+  if (typeof TextEncoder !== 'undefined') {
+    return new TextEncoder().encode(value).length;
+  }
+  return Buffer.byteLength(value, 'utf8');
+}
+
+export const VoteOperationDraftSchema = z.object({
+  type: z.literal('vote'),
+  prId: z.string().trim().min(1, 'PR_REQUIRED').refine(
+    (val) => /^\d+$/.test(val) && Number(val) > 0,
+    { message: 'PR_INVALID' }
+  ),
+  choice: z.enum(['approve', 'reject']),
+});
+
+export const DataOperationDraftSchema = z.object({
+  type: z.literal('data'),
+  name: z.string().trim().min(1, 'NAME_REQUIRED').refine(
+    (val) => byteLength(val) <= MAX_DATA_NAME_BYTES,
+    { message: 'NAME_TOO_LONG' }
+  ),
+  value: z.string().refine(
+    (val) => byteLength(val) <= MAX_DATA_VALUE_BYTES,
+    { message: 'VALUE_TOO_LONG' }
+  ),
+});
+
+export const PaymentOperationDraftSchema = z.object({
+  type: z.literal('payment'),
+  destination: z.string().trim().refine(
+    (val) => StellarSdk.StrKey.isValidEd25519PublicKey(val),
+    { message: 'DESTINATION_INVALID' }
+  ),
+  amount: z.string().trim().refine(
+    (val) => {
+      if (!new RegExp(`^\\d+(\\.\\d{1,${MAX_AMOUNT_DECIMALS}})?$`).test(val)) {
+        return false;
+      }
+      return Number(val) > 0;
+    },
+    { message: 'AMOUNT_INVALID' }
+  ),
+});
+
+export const OperationDraftSchema = z.discriminatedUnion('type', [
+  VoteOperationDraftSchema,
+  DataOperationDraftSchema,
+  PaymentOperationDraftSchema,
+]);
+
+export interface VoteOperationDraft extends z.infer<typeof VoteOperationDraftSchema> {}
+export interface DataOperationDraft extends z.infer<typeof DataOperationDraftSchema> {}
+export interface PaymentOperationDraft extends z.infer<typeof PaymentOperationDraftSchema> {}
+export type OperationDraft = z.infer<typeof OperationDraftSchema>;
+
+export interface QueuedOperation {
+  /** Stable client-side id used for React keys and local-state edits. */
+  id: string;
+  draft: OperationDraft;
+}
 
 export type DraftErrorCode =
   | 'PR_REQUIRED'
@@ -65,21 +103,6 @@ export const DRAFT_ERROR_MESSAGES: Record<DraftErrorCode, string> = {
   DESTINATION_INVALID: 'Enter a valid Stellar destination address (G...).',
   AMOUNT_INVALID: 'Enter a positive amount with up to 7 decimal places.',
 };
-
-function byteLength(value: string): number {
-  if (typeof TextEncoder !== 'undefined') {
-    return new TextEncoder().encode(value).length;
-  }
-  return Buffer.byteLength(value, 'utf8');
-}
-
-function isValidAmount(amount: string): boolean {
-  const trimmed = amount.trim();
-  if (!new RegExp(`^\\d+(\\.\\d{1,${MAX_AMOUNT_DECIMALS}})?$`).test(trimmed)) {
-    return false;
-  }
-  return Number(trimmed) > 0;
-}
 
 /** Create a blank draft for the given operation type. */
 export function emptyDraft(type: OperationType): OperationDraft {
@@ -106,40 +129,12 @@ export function createOperationId(): string {
  * when the draft is ready to be converted into a Stellar operation.
  */
 export function validateDraft(draft: OperationDraft): DraftErrorCode | null {
-  switch (draft.type) {
-    case 'vote': {
-      const trimmed = draft.prId.trim();
-      if (!trimmed) {
-        return 'PR_REQUIRED';
-      }
-      if (!/^\d+$/.test(trimmed) || Number(trimmed) <= 0) {
-        return 'PR_INVALID';
-      }
-      return null;
-    }
-    case 'data': {
-      const name = draft.name.trim();
-      if (!name) {
-        return 'NAME_REQUIRED';
-      }
-      if (byteLength(name) > MAX_DATA_NAME_BYTES) {
-        return 'NAME_TOO_LONG';
-      }
-      if (byteLength(draft.value) > MAX_DATA_VALUE_BYTES) {
-        return 'VALUE_TOO_LONG';
-      }
-      return null;
-    }
-    case 'payment': {
-      if (!StellarSdk.StrKey.isValidEd25519PublicKey(draft.destination.trim())) {
-        return 'DESTINATION_INVALID';
-      }
-      if (!isValidAmount(draft.amount)) {
-        return 'AMOUNT_INVALID';
-      }
-      return null;
-    }
+  const result = OperationDraftSchema.safeParse(draft);
+  if (!result.success) {
+    const firstError = result.error.issues[0];
+    return firstError.message as DraftErrorCode;
   }
+  return null;
 }
 
 /**
