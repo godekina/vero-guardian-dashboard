@@ -1,6 +1,6 @@
 export type UserRole = 'admin' | 'guardian' | 'unauthorized';
 
-const HORIZON_URL = process.env.NEXT_PUBLIC_HORIZON_URL ?? 'https://horizon-testnet.stellar.org';
+import { DEFAULT_HORIZON_URL } from './rpc';
 const INACTIVE_MARKER_VALUES: Record<string, true> = {
   false: true,
   '0': true,
@@ -104,11 +104,14 @@ function hasScopedActiveRoleMarker(
   return false;
 }
 
-export async function fetchUserRole(publicKey: string): Promise<UserRole> {
+export async function fetchUserRole(
+  publicKey: string,
+  horizonUrl: string = DEFAULT_HORIZON_URL
+): Promise<UserRole> {
   const registryAccount = process.env.NEXT_PUBLIC_ROLE_REGISTRY_ACCOUNT?.trim();
   const accountId = registryAccount || publicKey;
   const response = await fetch(
-    `${HORIZON_URL.replace(/\/+$/, '')}/accounts/${encodeURIComponent(accountId)}`
+    `${horizonUrl.replace(/\/+$/, '')}/accounts/${encodeURIComponent(accountId)}`
   );
 
   if (!response.ok) {

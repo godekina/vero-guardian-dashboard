@@ -1,10 +1,10 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { AlertTriangle, CheckCircle2, Clock3, WifiOff } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Clock3, WifiOff, Settings, X } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-
-const DEFAULT_RPC_ENDPOINT = 'https://soroban-testnet.stellar.org';
+import { useNetwork } from '@/context/NetworkContext';
+import { validateUrl, defaultNetworkConfig } from '@/services/rpc';
 const RPC_HEALTH_REQUEST_BODY = '{"jsonrpc":"2.0","id":1,"method":"getHealth"}';
 
 export const HEARTBEAT_INTERVAL_MS = 10_000;
@@ -209,9 +209,20 @@ export async function fetchRpcHealth(
   }
 }
 
-export default function NetworkStatus({ endpoint, fetcher = fetch, now = Date.now }: NetworkStatusProps) {
+export default function NetworkStatus({
+  endpoint,
+  fetcher = fetch,
+  now = Date.now,
+}: NetworkStatusProps) {
   const { t } = useTranslation();
-  const rpcEndpoint = endpoint ?? process.env.NEXT_PUBLIC_SOROBAN_RPC_URL ?? DEFAULT_RPC_ENDPOINT;
+  const { networkConfig, setHorizonUrl, setSorobanRpcUrl, setNetworkPassphrase, resetToDefaults } = useNetwork();
+  const [showSettings, setShowSettings] = useState(false);
+  const [localHorizonUrl, setLocalHorizonUrl] = useState(networkConfig.horizonUrl);
+  const [localSorobanRpcUrl, setLocalSorobanRpcUrl] = useState(networkConfig.sorobanRpcUrl);
+  const [localNetworkPassphrase, setLocalNetworkPassphrase] = useState(
+    networkConfig.networkPassphrase
+  );
+  const rpcEndpoint = endpoint ?? networkConfig.sorobanRpcUrl;
   const [snapshot, setSnapshot] = useState<RpcHealthSnapshot>(INITIAL_SNAPSHOT);
   const latestCheckId = useRef(0);
   const statusStyle = STATUS_STYLES[snapshot.status];
@@ -250,6 +261,28 @@ export default function NetworkStatus({ endpoint, fetcher = fetch, now = Date.no
     };
   }, [fetcher, now, rpcEndpoint]);
 
+  useEffect(() => {
+    setLocalHorizonUrl(networkConfig.horizonUrl);
+    setLocalSorobanRpcUrl(networkConfig.sorobanRpcUrl);
+    setLocalNetworkPassphrase(networkConfig.networkPassphrase);
+  }, [networkConfig]);
+
+  const handleSaveSettings = () => {
+    if (validateUrl(localHorizonUrl)) {
+      setHorizonUrl(localHorizonUrl);
+    }
+    if (validateUrl(localSorobanRpcUrl)) {
+      setSorobanRpcUrl(localSorobanRpcUrl);
+    }
+    setNetworkPassphrase(localNetworkPassphrase);
+    setShowSettings(false);
+  };
+
+  const handleReset = () => {
+    resetToDefaults();
+    setShowSettings(false);
+  };
+
   return (
     <section
       aria-label={t('network.ariaLabel')}
@@ -276,8 +309,85 @@ export default function NetworkStatus({ endpoint, fetcher = fetch, now = Date.no
           <span className="rounded-full border border-slate-200 bg-white px-3 py-1 font-mono text-xs text-slate-700 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300">
             {snapshot.latencyMs === null ? t('network.latencyEmpty') : t('network.latency', { latency: snapshot.latencyMs })}
           </span>
+          <button
+            type="button"
+            onClick={() => setShowSettings(!showSettings)}
+            className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-medium text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800"
+          >
+            <Settings className="h-4 w-4 inline-block mr-1" />
+            Settings
+          </button>
         </div>
       </div>
+
+      {showSettings && (
+        <div className="mt-4 border-t border-slate-200 pt-4 dark:border-slate-700">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="font-semibold text-slate-900 dark:text-white">Network Settings</h3>
+            <button
+              type="button"
+              onClick={() => setShowSettings(false)}
+              className="text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+          <div className="space-y-3">
+            <div>
+              <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
+                Horizon URL
+              </label>
+              <input
+                type="text"
+                value={localHorizonUrl}
+                onChange={(e) => setLocalHorizonUrl(e.target.value)}
+                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs bg-white dark:bg-slate-900 dark:border-slate-700 dark:text-white"
+                placeholder={defaultNetworkConfig.horizonUrl}
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
+                Soroban RPC URL
+              </label>
+              <input
+                type="text"
+                value={localSorobanRpcUrl}
+                onChange={(e) => setLocalSorobanRpcUrl(e.target.value)}
+                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs bg-white dark:bg-slate-900 dark:border-slate-700 dark:text-white"
+                placeholder={defaultNetworkConfig.sorobanRpcUrl}
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
+                Network Passphrase
+              </label>
+              <input
+                type="text"
+                value={localNetworkPassphrase}
+                onChange={(e) => setLocalNetworkPassphrase(e.target.value)}
+                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs bg-white dark:bg-slate-900 dark:border-slate-700 dark:text-white"
+                placeholder={defaultNetworkConfig.networkPassphrase}
+              />
+            </div>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={handleSaveSettings}
+                className="rounded-lg bg-sky-600 px-4 py-2 text-xs font-semibold text-white hover:bg-sky-700"
+              >
+                Save
+              </button>
+              <button
+                type="button"
+                onClick={handleReset}
+                className="rounded-lg border border-slate-300 px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+              >
+                Reset to Defaults
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </section>
   );
 }

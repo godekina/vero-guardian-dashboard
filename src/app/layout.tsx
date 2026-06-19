@@ -9,6 +9,7 @@ import { ToastProvider } from '@/components/Toast';
 import { ErrorProvider } from '@/components/ErrorModal';
 import { ThemeProvider } from '@/context/ThemeContext';
 import { I18nProvider } from '@/i18n';
+import { NetworkProvider } from '@/context/NetworkContext';
 
 const inter = Inter({ subsets: ['latin'] });
 

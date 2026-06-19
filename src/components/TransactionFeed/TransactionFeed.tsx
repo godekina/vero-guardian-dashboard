@@ -6,9 +6,8 @@ import { useTranslation } from 'react-i18next';
 import * as StellarSdk from '@stellar/stellar-sdk';
 import { getStellarExplorerTxUrl } from '@/lib/stellar-expert';
 import { appendAuditEvent, type AuditLogEventInput } from '@/utils/logger';
-
-const DEFAULT_HORIZON_URL =
-  process.env.NEXT_PUBLIC_HORIZON_URL ?? 'https://horizon-testnet.stellar.org';
+import { useNetwork } from '@/context/NetworkContext';
+import { DEFAULT_HORIZON_URL } from '@/services/rpc';
 
 /** Maximum number of transactions retained in the feed at once. */
 export const MAX_FEED_ENTRIES = 25;
@@ -124,13 +123,14 @@ export default function TransactionFeed({
   auditAppender = appendAuditEvent,
 }: TransactionFeedProps = {}): ReactElement {
   const { t } = useTranslation();
+  const { networkConfig } = useNetwork();
   const [transactions, setTransactions] = useState<FeedTransaction[]>([]);
   const [status, setStatus] = useState<FeedConnectionStatus>('connecting');
   const seenTransactionIds = useRef<Set<string>>(new Set());
 
   const subscriber = useMemo<TransactionStreamSubscriber>(
-    () => subscribe ?? createHorizonTransactionStream(),
-    [subscribe],
+    () => subscribe ?? createHorizonTransactionStream(networkConfig.horizonUrl),
+    [subscribe, networkConfig.horizonUrl],
   );
 
   useEffect(() => {

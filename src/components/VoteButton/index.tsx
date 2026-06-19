@@ -8,6 +8,8 @@ import { castVote } from '@/services/contractClient';
 import { getStellarExplorerTxUrl } from '@/lib/stellar-expert';
 import { useToast } from '@/components/Toast';
 import { useRole } from '@/context/RoleContext';
+import { useNetwork } from '@/context/NetworkContext';
+import { useChainState } from '@/hooks/useChainState';
 import { appendAuditEvent } from '@/utils/logger';
 
 interface VoteButtonProps {
@@ -109,6 +111,7 @@ export default function VoteButton({ prId, publicKey }: VoteButtonProps): ReactE
   const [voted, setVoted] = useState(false);
   const [loading, setLoading] = useState(false);
   const { canVote, isLoading: isRoleLoading } = useRole();
+  const { networkConfig } = useNetwork();
   const { forceSync } = useChainState({
     cacheKeys: publicKey
       ? ['dashboard', 'prs', 'transactions', `account:${publicKey}`, `reputation:${publicKey}`]
@@ -141,7 +144,12 @@ export default function VoteButton({ prId, publicKey }: VoteButtonProps): ReactE
 
     setLoading(true);
     try {
-      const hash = await castVote(prId, publicKey);
+      const hash = await castVote(
+        prId,
+        publicKey,
+        networkConfig.horizonUrl,
+        networkConfig.networkPassphrase
+      );
       setVoted(true);
       void appendAuditEvent({
         id: `vote-${prId}-${hash}`,

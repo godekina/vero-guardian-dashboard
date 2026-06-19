@@ -12,6 +12,7 @@ import {
 } from 'react';
 
 import { useWallet } from '@/context/WalletContext';
+import { useNetwork } from '@/context/NetworkContext';
 import { useChainState } from '@/hooks/useChainState';
 import { fetchUserRole, type UserRole } from '@/services/roleClient';
 
@@ -38,6 +39,7 @@ function getRoleErrorMessage(error: unknown): string {
 
 export function RoleProvider({ children }: { children: ReactNode }) {
   const { publicKey, isLoading: isWalletLoading } = useWallet();
+  const { networkConfig } = useNetwork();
   const [role, setRole] = useState<UserRole>('unauthorized');
   const [isRoleLoading, setIsRoleLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -61,7 +63,7 @@ export function RoleProvider({ children }: { children: ReactNode }) {
     setError(null);
 
     try {
-      const nextRole = await fetchUserRole(publicKey);
+      const nextRole = await fetchUserRole(publicKey, networkConfig.horizonUrl);
       if (requestIdRef.current !== requestId) {
         return;
       }
@@ -79,7 +81,7 @@ export function RoleProvider({ children }: { children: ReactNode }) {
         setIsRoleLoading(false);
       }
     }
-  }, [publicKey]);
+  }, [publicKey, networkConfig.horizonUrl]);
 
   useEffect(() => {
     void refreshRole();
