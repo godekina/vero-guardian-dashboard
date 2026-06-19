@@ -2,6 +2,7 @@ import React from 'react';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { GripHorizontal } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 
 interface SortableWidgetProps {
   id: string;
@@ -10,6 +11,7 @@ interface SortableWidgetProps {
 }
 
 export function SortableWidget({ id, children, className }: SortableWidgetProps) {
+  const { t } = useTranslation();
   const {
     attributes,
     listeners,
@@ -36,7 +38,7 @@ export function SortableWidget({ id, children, className }: SortableWidgetProps)
         {...attributes}
         {...listeners}
         className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity z-20 p-1 rounded cursor-grab active:cursor-grabbing text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
-        aria-label="Drag to reorder"
+        aria-label={t('sortableWidget.dragAria')}
       >
         <GripHorizontal className="w-5 h-5" />
       </div>

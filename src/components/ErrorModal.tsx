@@ -9,6 +9,7 @@ import {
   type ReactNode,
 } from 'react';
 import { AlertTriangle, X } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 
 interface ErrorDetails {
   /** Heading shown at the top of the modal. Defaults to "Something went wrong". */
@@ -30,9 +31,8 @@ interface ErrorContextType {
 
 const ErrorContext = createContext<ErrorContextType | undefined>(undefined);
 
-const DEFAULT_TITLE = 'Something went wrong';
-
 export function ErrorProvider({ children }: { children: ReactNode }) {
+  const { t } = useTranslation();
   const [error, setError] = useState<ErrorDetails | null>(null);
 
   const showError = useCallback((details: ErrorDetails) => {
@@ -76,7 +76,7 @@ export function ErrorProvider({ children }: { children: ReactNode }) {
           >
             <button
               onClick={clearError}
-              aria-label="Close error dialog"
+              aria-label={t('errorModal.closeAria')}
               className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500 rounded p-0.5"
             >
               <X className="w-5 h-5" aria-hidden="true" />
@@ -91,7 +91,7 @@ export function ErrorProvider({ children }: { children: ReactNode }) {
                     id="error-modal-title"
                     className="text-lg font-semibold text-slate-900 dark:text-white mb-1"
                   >
-                    {error.title || DEFAULT_TITLE}
+                    {error.title || t('errorModal.title')}
                   </h2>
                   <div
                     id="error-modal-message"
@@ -106,7 +106,7 @@ export function ErrorProvider({ children }: { children: ReactNode }) {
                   onClick={clearError}
                   className="px-4 py-2 text-sm font-medium bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-800 dark:text-white rounded-lg border border-slate-200 dark:border-slate-600 transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500"
                 >
-                  {error.actionLabel ? 'Cancel' : 'Dismiss'}
+                  {error.actionLabel ? t('errorModal.cancel') : t('errorModal.dismiss')}
                 </button>
                 {error.actionLabel && (
                   <button

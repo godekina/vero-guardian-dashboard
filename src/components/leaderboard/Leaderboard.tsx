@@ -3,6 +3,7 @@
 import type { ReactElement } from 'react';
 import { memo, useMemo, useState } from 'react';
 import { Medal, ShieldCheck, TrendingUp } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import {
   type AuditContributorInput,
   type RankedAuditContributor,
@@ -90,9 +91,9 @@ function filterActivityByWindow(
   });
 }
 
-function formatWallet(walletAddress: string | undefined): string {
+function formatWallet(walletAddress: string | undefined, t: (key: string) => string): string {
   if (!walletAddress) {
-    return 'No wallet';
+    return t('leaderboard.noWallet');
   }
 
   if (walletAddress.length <= 12) {
@@ -102,9 +103,9 @@ function formatWallet(walletAddress: string | undefined): string {
   return `${walletAddress.slice(0, 6)}...${walletAddress.slice(-4)}`;
 }
 
-function formatDate(value: string | undefined): string {
+function formatDate(value: string | undefined, t: (key: string) => string): string {
   if (!value) {
-    return 'No activity';
+    return t('leaderboard.noActivity');
   }
 
   return DATE_FORMATTER.format(new Date(value));
@@ -123,13 +124,13 @@ function getRankClassName(rank: number): string {
   }
 }
 
-function LeaderboardRow({ contributor }: { contributor: RankedAuditContributor }): ReactElement {
+function LeaderboardRow({ contributor, t }: { contributor: RankedAuditContributor; t: (key: string) => string }): ReactElement {
   return (
     <li className="rounded-lg border border-slate-200 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-900/80">
       <div className="flex items-start gap-3">
         <span
           className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-sm font-bold ${getRankClassName(contributor.rank)}`}
-          aria-label={`Rank ${contributor.rank}`}
+          aria-label={t('leaderboard.rankAria', { rank: contributor.rank })}
         >
           {contributor.rank}
         </span>
@@ -140,33 +141,33 @@ function LeaderboardRow({ contributor }: { contributor: RankedAuditContributor }
                 {contributor.displayName}
               </p>
               <p className="truncate font-mono text-xs text-slate-500 dark:text-slate-400">
-                {formatWallet(contributor.walletAddress)}
+                {formatWallet(contributor.walletAddress, t)}
               </p>
             </div>
             <div className="text-right">
               <p className="font-mono text-lg font-bold text-slate-900 dark:text-white">
                 {contributor.score}
               </p>
-              <p className="text-xs text-slate-500 dark:text-slate-400">score</p>
+              <p className="text-xs text-slate-500 dark:text-slate-400">{t('leaderboard.score')}</p>
             </div>
           </div>
           <dl className="mt-3 grid grid-cols-3 gap-2 text-xs">
             <div>
-              <dt className="text-slate-500 dark:text-slate-400">Audits</dt>
+              <dt className="text-slate-500 dark:text-slate-400">{t('leaderboard.audits')}</dt>
               <dd className="font-semibold text-slate-800 dark:text-slate-200">
                 {contributor.auditsCompleted}
               </dd>
             </div>
             <div>
-              <dt className="text-slate-500 dark:text-slate-400">Findings</dt>
+              <dt className="text-slate-500 dark:text-slate-400">{t('leaderboard.findings')}</dt>
               <dd className="font-semibold text-slate-800 dark:text-slate-200">
                 {contributor.criticalFindings + contributor.highFindings + contributor.mediumFindings}
               </dd>
             </div>
             <div>
-              <dt className="text-slate-500 dark:text-slate-400">Latest</dt>
+              <dt className="text-slate-500 dark:text-slate-400">{t('leaderboard.latest')}</dt>
               <dd className="font-semibold text-slate-800 dark:text-slate-200">
-                {formatDate(contributor.lastAuditAt)}
+                {formatDate(contributor.lastAuditAt, t)}
               </dd>
             </div>
           </dl>
@@ -177,6 +178,7 @@ function LeaderboardRow({ contributor }: { contributor: RankedAuditContributor }
 }
 
 function Leaderboard(): ReactElement {
+  const { t } = useTranslation();
   const [leaderboardWindow, setLeaderboardWindow] = useState<LeaderboardWindow>('all');
   const rankedContributors = useMemo(
     () => rankAuditContributors(filterActivityByWindow(MOCK_AUDIT_ACTIVITY, leaderboardWindow)),
@@ -198,10 +200,10 @@ function Leaderboard(): ReactElement {
         <div>
           <div className="mb-2 flex items-center gap-2 text-emerald-700 dark:text-emerald-400">
             <Medal className="h-5 w-5" aria-hidden="true" />
-            <p className="text-xs font-semibold uppercase tracking-wider">Audit Activity</p>
+            <p className="text-xs font-semibold uppercase tracking-wider">{t('leaderboard.auditActivity')}</p>
           </div>
           <h2 id="audit-leaderboard-title" className="text-lg font-semibold text-slate-900 dark:text-white">
-            Leaderboard
+            {t('leaderboard.title')}
           </h2>
         </div>
         <div className="flex rounded-lg border border-slate-200 bg-slate-100 p-1 dark:border-slate-700 dark:bg-slate-800">
@@ -215,7 +217,7 @@ function Leaderboard(): ReactElement {
             }`}
             aria-pressed={leaderboardWindow === 'all'}
           >
-            All
+            {t('leaderboard.all')}
           </button>
           <button
             type="button"
@@ -227,7 +229,7 @@ function Leaderboard(): ReactElement {
             }`}
             aria-pressed={leaderboardWindow === 'recent'}
           >
-            30d
+            {t('leaderboard.recent30d')}
           </button>
         </div>
       </div>
@@ -236,24 +238,24 @@ function Leaderboard(): ReactElement {
         <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-900/80">
           <div className="mb-1 flex items-center gap-2 text-sky-700 dark:text-sky-400">
             <TrendingUp className="h-4 w-4" aria-hidden="true" />
-            <p className="text-xs font-semibold uppercase tracking-wider">Audits</p>
+            <p className="text-xs font-semibold uppercase tracking-wider">{t('leaderboard.audits')}</p>
           </div>
           <p className="font-mono text-2xl font-bold text-slate-900 dark:text-white">{totalAudits}</p>
         </div>
         <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-900/80">
           <div className="mb-1 flex items-center gap-2 text-emerald-700 dark:text-emerald-400">
             <ShieldCheck className="h-4 w-4" aria-hidden="true" />
-            <p className="text-xs font-semibold uppercase tracking-wider">Leader</p>
+            <p className="text-xs font-semibold uppercase tracking-wider">{t('leaderboard.leader')}</p>
           </div>
           <p className="truncate font-semibold text-slate-900 dark:text-white">
-            {topContributor?.displayName ?? 'No activity'}
+            {topContributor?.displayName ?? t('leaderboard.noActivity')}
           </p>
         </div>
       </div>
 
       <ol className="space-y-3">
         {rankedContributors.map((contributor) => (
-          <LeaderboardRow key={contributor.contributorId} contributor={contributor} />
+          <LeaderboardRow key={contributor.contributorId} contributor={contributor} t={t} />
         ))}
       </ol>
     </section>

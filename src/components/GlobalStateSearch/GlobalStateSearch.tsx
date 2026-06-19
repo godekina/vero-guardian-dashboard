@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import { Database, KeyRound, Search } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 
 export type OnChainSearchTarget = {
   id: string;
@@ -174,13 +175,45 @@ export function searchOnChainTargets(
     .slice(0, maxResults);
 }
 
+const TARGET_TRANSLATION_KEYS: Record<string, { label: string; description: string }> = {
+  'task-pr': { label: 'globalStateSearch.targets.taskPr.label', description: 'globalStateSearch.targets.taskPr.description' },
+  'guardian-vote': { label: 'globalStateSearch.targets.guardianVote.label', description: 'globalStateSearch.targets.guardianVote.description' },
+  'guardian-reputation': { label: 'globalStateSearch.targets.guardianReputation.label', description: 'globalStateSearch.targets.guardianReputation.description' },
+  'guardian-role': { label: 'globalStateSearch.targets.guardianRole.label', description: 'globalStateSearch.targets.guardianRole.description' },
+  'proposal-state': { label: 'globalStateSearch.targets.proposalState.label', description: 'globalStateSearch.targets.proposalState.description' },
+  'horizon-account-data': { label: 'globalStateSearch.targets.horizonData.label', description: 'globalStateSearch.targets.horizonData.description' },
+};
+
+function translateTarget(target: OnChainSearchTarget, t: (key: string) => string): OnChainSearchTarget {
+  const keys = TARGET_TRANSLATION_KEYS[target.id];
+  if (!keys) return target;
+  return { ...target, label: t(keys.label), description: t(keys.description) };
+}
+
+const TYPE_TRANSLATION_KEYS: Record<string, string> = {
+  task: 'globalStateSearch.types.task',
+  vote: 'globalStateSearch.types.vote',
+  reputation: 'globalStateSearch.types.reputation',
+  governance: 'globalStateSearch.types.governance',
+  network: 'globalStateSearch.types.network',
+};
+
+function translateType(type: string, t: (key: string) => string): string {
+  return TYPE_TRANSLATION_KEYS[type] ? t(TYPE_TRANSLATION_KEYS[type]) : type;
+}
+
 export default function GlobalStateSearch({
   targets = DEFAULT_ON_CHAIN_SEARCH_TARGETS,
 }: {
   targets?: OnChainSearchTarget[];
 }) {
+  const { t } = useTranslation();
   const [query, setQuery] = useState('');
-  const results = useMemo(() => searchOnChainTargets(query, targets), [query, targets]);
+  const translatedTargets = useMemo(
+    () => targets.map((target) => translateTarget(target, t)),
+    [targets, t],
+  );
+  const results = useMemo(() => searchOnChainTargets(query, translatedTargets), [query, translatedTargets]);
   const normalizedQuery = normalizeSearchText(query);
 
   return (
@@ -188,19 +221,19 @@ export default function GlobalStateSearch({
       <div className="flex items-center gap-2">
         <Search className="h-5 w-5 text-indigo-600 dark:text-indigo-400" aria-hidden="true" />
         <h2 id="global-state-search-title" className="text-lg font-semibold text-slate-900 dark:text-white">
-          Global State Search
+          {t('globalStateSearch.heading')}
         </h2>
       </div>
 
       <label className="block">
-        <span className="sr-only">Search on-chain state targets</span>
+        <span className="sr-only">{t('globalStateSearch.searchSrLabel')}</span>
         <div className="relative">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" aria-hidden="true" />
           <input
             type="search"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="Search function, key, contract"
+            placeholder={t('globalStateSearch.placeholder')}
             className="w-full rounded-xl border border-slate-200 bg-white py-3 pl-10 pr-3 text-sm text-slate-900 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/30 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
           />
         </div>
@@ -218,7 +251,7 @@ export default function GlobalStateSearch({
                   <div className="flex flex-wrap items-center gap-2">
                     <h3 className="font-semibold text-slate-900 dark:text-white">{target.label}</h3>
                     <span className={`rounded-full border px-2 py-0.5 text-xs font-semibold ${TYPE_STYLES[target.type]}`}>
-                      {target.type}
+                      {translateType(target.type, t)}
                     </span>
                   </div>
                   <p className="mt-2 text-sm text-slate-600 dark:text-slate-400">{target.description}</p>
@@ -231,14 +264,14 @@ export default function GlobalStateSearch({
 
               <dl className="mt-4 grid gap-3 text-sm">
                 <div>
-                  <dt className="text-xs font-semibold uppercase text-slate-500 dark:text-slate-400">Function ID</dt>
+                  <dt className="text-xs font-semibold uppercase text-slate-500 dark:text-slate-400">{t('globalStateSearch.functionId')}</dt>
                   <dd className="mt-1 flex items-center gap-2 font-mono text-xs text-slate-800 dark:text-slate-200">
                     <KeyRound className="h-4 w-4 text-slate-400" aria-hidden="true" />
                     {target.functionId}
                   </dd>
                 </div>
                 <div>
-                  <dt className="text-xs font-semibold uppercase text-slate-500 dark:text-slate-400">Contract</dt>
+                  <dt className="text-xs font-semibold uppercase text-slate-500 dark:text-slate-400">{t('globalStateSearch.contract')}</dt>
                   <dd className="mt-1 text-slate-800 dark:text-slate-200">{target.contract}</dd>
                 </div>
               </dl>
@@ -246,7 +279,7 @@ export default function GlobalStateSearch({
           ))
         ) : (
           <p className="rounded-xl border border-dashed border-slate-300 p-4 text-sm text-slate-600 dark:border-slate-700 dark:text-slate-400">
-            No on-chain state targets match {normalizedQuery ? `"${normalizedQuery}"` : 'that query'}.
+            {normalizedQuery ? t('globalStateSearch.noResultsWithQuery', { query: normalizedQuery }) : t('globalStateSearch.noResults')}
           </p>
         )}
       </div>

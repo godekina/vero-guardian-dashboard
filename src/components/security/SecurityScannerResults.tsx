@@ -2,6 +2,7 @@
 
 import { AlertTriangle, ShieldCheck, ShieldOff } from 'lucide-react';
 import { useCallback, useMemo, useState, type ChangeEvent, type ReactElement } from 'react';
+import { useTranslation } from 'react-i18next';
 import { parseVulnerabilityResults, summarizeVulnerabilities } from './vulnerabilityParser';
 import VulnerabilityList from './VulnerabilityList';
 import type { VulnerabilityFinding, VulnerabilityParseResult, VulnerabilitySummary } from './types';
@@ -36,8 +37,10 @@ export function getSecurityScannerSnapshot(results: unknown): SecurityScannerSna
 export default function SecurityScannerResults({
   results,
   allowInput = true,
-  heading = 'Security scanner results',
+  heading,
 }: SecurityScannerResultsProps): ReactElement {
+  const { t } = useTranslation();
+  const resolvedHeading = heading ?? t('securityScanner.heading');
   const [scannerInput, setScannerInput] = useState('');
   const scannerSource = scannerInput.trim() ? scannerInput : results ?? '';
   const parseResult = useMemo(() => parseVulnerabilityResults(scannerSource), [scannerSource]);
@@ -54,16 +57,16 @@ export default function SecurityScannerResults({
         <div className="flex items-center gap-2">
           <ShieldCheck className="h-5 w-5 text-emerald-600 dark:text-emerald-400" aria-hidden="true" />
           <h2 id="security-scanner-results-title" className="text-lg font-semibold text-slate-900 dark:text-white">
-            {heading}
+            {resolvedHeading}
           </h2>
         </div>
 
         <div className="flex flex-wrap gap-2 text-xs font-semibold">
           <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">
-            {snapshot.totalCount} total
+            {snapshot.totalCount} {t('securityScanner.total')}
           </span>
           <span className="rounded-full border border-red-200 bg-red-50 px-2.5 py-1 text-red-700 dark:border-red-800 dark:bg-red-950/40 dark:text-red-300">
-            {snapshot.criticalCount} critical
+            {snapshot.criticalCount} {t('securityScanner.critical')}
           </span>
         </div>
       </div>
@@ -71,14 +74,14 @@ export default function SecurityScannerResults({
       {allowInput ? (
         <label className="block">
           <span className="mb-2 block text-sm font-medium text-slate-700 dark:text-slate-300">
-            Scanner JSON
+            {t('securityScanner.scannerJson')}
           </span>
           <textarea
             value={scannerInput}
             onChange={handleScannerInputChange}
             rows={6}
             spellCheck={false}
-            placeholder='Paste scanner JSON, for example {"findings":[{"id":"CVE-0000","severity":"critical","title":"Example finding"}]}'
+            placeholder={t('securityScanner.placeholder')}
             className="w-full rounded-xl border border-slate-200 bg-white p-3 font-mono text-xs text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/30 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
           />
         </label>
@@ -101,7 +104,7 @@ export default function SecurityScannerResults({
         >
           <AlertTriangle className="h-5 w-5 shrink-0" aria-hidden="true" />
           <p>
-            Critical scanner findings require immediate review before approval or deployment.
+            {t('securityScanner.criticalAlert')}
           </p>
         </div>
       ) : null}
