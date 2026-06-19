@@ -7,6 +7,7 @@ import { useTranslation } from 'react-i18next';
 import ConnectButton from '@/components/ConnectButton';
 import AuditSessionTimer from '@/components/AuditSessionTimer';
 import ContractTimeTraveler from '@/components/ContractTimeTraveler';
+import EmergencyHaltButton from '@/components/EmergencyHaltButton';
 import ErrorBoundary from '@/components/ErrorBoundary';
 import ForceSyncButton from '@/components/ForceSyncButton';
 import GasHeatmap from '@/components/GasHeatmap';
@@ -228,7 +229,10 @@ export default function Home(): ReactElement {
                   <p className="text-xs font-semibold uppercase tracking-wider text-indigo-700 dark:text-indigo-400 mb-3">
                     {t('admin.management')}
                   </p>
-                  <TaskCard />
+                  <div className="flex flex-col gap-4">
+                    <TaskCard />
+                    <EmergencyHaltButton />
+                  </div>
                 </div>
               </ErrorBoundary>
             </AccessControl>
