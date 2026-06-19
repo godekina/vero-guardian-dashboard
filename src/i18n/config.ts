@@ -84,6 +84,25 @@ export const resources = {
       admin: {
         management: 'Admin Management',
       },
+      emergencyHalt: {
+        label: 'Emergency Halt',
+        halted: 'Contract Halted',
+        halting: 'Halting Contract…',
+        noContract: 'Contract Not Configured',
+        missingWallet: 'Connect Wallet First',
+        unauthorized: 'Admin Only',
+        confirmTitle: 'Confirm Emergency Halt',
+        confirmDescription: 'This will halt all contract operations. This action is irreversible and requires admin authority.',
+        confirmExecute: 'Yes, Halt Contract',
+        confirmCancel: 'Cancel',
+        ariaLabel: 'Emergency halt circuit breaker',
+        toast: {
+          connectWallet: 'Connect your wallet to halt the contract.',
+          noContract: 'No contract ID configured (NEXT_PUBLIC_CONTRACT_ID).',
+          halted: 'Contract successfully halted.',
+          failed: 'Failed to halt the contract.',
+        },
+      },
       actions: {
         heading: 'Quick Actions',
         networkStatus: 'View Network Status',
@@ -422,6 +441,25 @@ export const resources = {
       admin: {
         management: 'Gestion de administracion',
       },
+      emergencyHalt: {
+        label: 'Parada de emergencia',
+        halted: 'Contrato detenido',
+        halting: 'Deteniendo contrato…',
+        noContract: 'Contrato no configurado',
+        missingWallet: 'Conecta la cartera primero',
+        unauthorized: 'Solo administradores',
+        confirmTitle: 'Confirmar parada de emergencia',
+        confirmDescription: 'Esto detendra todas las operaciones del contrato. Esta accion es irreversible y requiere autorizacion de administrador.',
+        confirmExecute: 'Si, detener contrato',
+        confirmCancel: 'Cancelar',
+        ariaLabel: 'Interruptor de parada de emergencia',
+        toast: {
+          connectWallet: 'Conecta tu cartera para detener el contrato.',
+          noContract: 'ID de contrato no configurado (NEXT_PUBLIC_CONTRACT_ID).',
+          halted: 'Contrato detenido exitosamente.',
+          failed: 'Error al detener el contrato.',
+        },
+      },
       actions: {
         heading: 'Acciones rapidas',
         networkStatus: 'Ver estado de la red',
@@ -759,6 +797,25 @@ export const resources = {
       },
       admin: {
         management: 'Gestion admin',
+      },
+      emergencyHalt: {
+        label: 'Arret d urgence',
+        halted: 'Contrat interrompu',
+        halting: 'Interruption du contrat…',
+        noContract: 'Contrat non configure',
+        missingWallet: 'Connectez d abord le portefeuille',
+        unauthorized: 'Administrateur seulement',
+        confirmTitle: 'Confirmer l arret d urgence',
+        confirmDescription: 'Cela interrompra toutes les operations du contrat. Cette action est irreversible et necessite une autorisation d administrateur.',
+        confirmExecute: 'Oui, interrompre le contrat',
+        confirmCancel: 'Annuler',
+        ariaLabel: 'Interrupteur d arret d urgence',
+        toast: {
+          connectWallet: 'Connectez votre portefeuille pour interrompre le contrat.',
+          noContract: 'ID de contrat non configure (NEXT_PUBLIC_CONTRACT_ID).',
+          halted: 'Contrat interrompu avec succes.',
+          failed: 'Echec de l interruption du contrat.',
+        },
       },
       actions: {
         heading: 'Actions rapides',
