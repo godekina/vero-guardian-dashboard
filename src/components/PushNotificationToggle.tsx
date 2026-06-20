@@ -5,6 +5,25 @@ import { Bell, BellOff, Loader2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { getPushSubscription, savePushSubscription } from '@/services/push';
 
+const PUSH_SUBSCRIPTION_KEY = 'vero_push_subscription';
+
+function savePushSubscription(subscription: PushSubscription): void {
+  try {
+    localStorage.setItem(PUSH_SUBSCRIPTION_KEY, JSON.stringify(subscription.toJSON()));
+  } catch {
+    // localStorage may be unavailable in some environments
+  }
+}
+
+function getPushSubscription(): PushSubscriptionJSON | null {
+  try {
+    const stored = localStorage.getItem(PUSH_SUBSCRIPTION_KEY);
+    return stored ? (JSON.parse(stored) as PushSubscriptionJSON) : null;
+  } catch {
+    return null;
+  }
+}
+
 async function urlBase64ToUint8Array(base64String: string): Promise<Uint8Array> {
   const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
   const normalized = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');

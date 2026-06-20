@@ -12,7 +12,10 @@ jest.mock('@stellar/stellar-sdk', () => {
     loadAccount: jest.fn(),
     submitTransaction: jest.fn(),
   };
-  (jest.mock as any).__stellarServerMock = server;
+
+  // Store the server reference on the mock constructor so tests can access it
+  const ServerMock = jest.fn(() => server);
+  (ServerMock as any).__mockServer = server;
 
   // Chainable TransactionBuilder mock
   const txMock = {
@@ -25,7 +28,7 @@ jest.mock('@stellar/stellar-sdk', () => {
 
   return {
     ...original,
-    Horizon: { Server: jest.fn(() => server) },
+    Horizon: { Server: ServerMock },
     TransactionBuilder,
   };
 });
@@ -38,8 +41,8 @@ import { castVote } from '@/services/contractClient';
 import { signTransaction } from '@stellar/freighter-api';
 import * as StellarSdk from '@stellar/stellar-sdk';
 
-// Access the stable mock server created inside the factory
-const mockServer = (StellarSdk.Horizon.Server as jest.Mock).mock.results[0].value as {
+// Access the mock server instance stored on the Server mock constructor
+const mockServer = (StellarSdk.Horizon.Server as any).__mockServer as {
   loadAccount: jest.Mock;
   submitTransaction: jest.Mock;
 };

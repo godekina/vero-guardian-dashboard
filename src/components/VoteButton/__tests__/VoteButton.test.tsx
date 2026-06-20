@@ -11,6 +11,9 @@ jest.mock('@/services/contractClient', () => ({
 jest.mock('@/context/RoleContext', () => ({
   useRole: jest.fn(),
 }));
+jest.mock('@/context/NetworkContext', () => ({
+  useNetwork: jest.fn(),
+}));
 jest.mock('@/components/Toast');
 jest.mock('@/utils/logger', () => ({
   appendAuditEvent: jest.fn(() => Promise.resolve()),
@@ -30,6 +33,8 @@ jest.mock('@/hooks/useChainState', () => ({
 jest.mock('@/lib/stellar-expert', () => ({
   getStellarExplorerTxUrl: (hash: string) => `https://stellar.expert/explorer/testnet/tx/${hash}`,
 }));
+
+import { useNetwork } from '@/context/NetworkContext';
 
 const mockCastVote = castVote as jest.MockedFunction<typeof castVote>;
 const mockUseRole = useRole as jest.MockedFunction<typeof useRole>;
@@ -60,6 +65,18 @@ function renderVoteButton(publicKey: string | null = 'GPUBKEY'): HTMLElement {
 
 beforeEach(() => {
   mockUseToast.mockReturnValue({ showToast: mockShowToast });
+  mockUseNetwork.mockReturnValue({
+    networkConfig: {
+      horizonUrl: 'https://horizon-testnet.stellar.org',
+      sorobanRpcUrl: 'https://soroban-testnet.stellar.org',
+      networkPassphrase: 'Test SDF Network ; September 2015',
+    },
+    isCustomConfig: false,
+    setHorizonUrl: jest.fn(),
+    setSorobanRpcUrl: jest.fn(),
+    setNetworkPassphrase: jest.fn(),
+    resetToDefaults: jest.fn(),
+  });
   mockRole();
   mockCastVote.mockResolvedValue('deafhash');
 });

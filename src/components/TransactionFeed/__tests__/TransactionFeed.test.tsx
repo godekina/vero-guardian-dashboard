@@ -1,5 +1,6 @@
 import { act, render, screen } from '@testing-library/react';
-import { afterEach, describe, expect, jest, test } from '@jest/globals';
+import { afterEach, beforeEach, describe, expect, jest, test } from '@jest/globals';
+import { NetworkProvider } from '@/context/NetworkContext';
 import TransactionFeed, {
   toFeedTransaction,
   truncateMiddle,
@@ -17,6 +18,10 @@ jest.mock('@/hooks/useChainState', () => ({
     syncVersion: 0,
   }),
 }));
+
+function renderWithProviders(element: React.ReactElement) {
+  return render(<NetworkProvider>{element}</NetworkProvider>);
+}
 
 function makeRecord(overrides: Partial<HorizonTransactionRecord> = {}): HorizonTransactionRecord {
   return {
@@ -96,7 +101,7 @@ describe('TransactionFeed', () => {
 
   test('renders the heading and an empty listening state, going live on subscribe', () => {
     const { subscribe, auditAppender } = createControllableSubscriber();
-    render(<TransactionFeed subscribe={subscribe} auditAppender={auditAppender} />);
+    renderWithProviders(<TransactionFeed subscribe={subscribe} auditAppender={auditAppender} />);
 
     expect(screen.getByText('Live Transactions')).toBeTruthy();
     expect(screen.getByText('Listening for new transactions...')).toBeTruthy();
@@ -105,7 +110,7 @@ describe('TransactionFeed', () => {
 
   test('renders a streamed transaction with an explorer link, ledger and op count', () => {
     const { subscribe, handlersRef, auditAppender } = createControllableSubscriber();
-    render(<TransactionFeed subscribe={subscribe} auditAppender={auditAppender} />);
+    renderWithProviders(<TransactionFeed subscribe={subscribe} auditAppender={auditAppender} />);
 
     act(() => {
       handlersRef.current?.onMessage(feedTx());
@@ -133,7 +138,7 @@ describe('TransactionFeed', () => {
 
   test('prepends newest transactions and caps the feed at maxEntries', () => {
     const { subscribe, handlersRef, auditAppender } = createControllableSubscriber();
-    render(<TransactionFeed subscribe={subscribe} maxEntries={3} auditAppender={auditAppender} />);
+    renderWithProviders(<TransactionFeed subscribe={subscribe} maxEntries={3} auditAppender={auditAppender} />);
 
     act(() => {
       for (let i = 1; i <= 5; i += 1) {
@@ -149,7 +154,7 @@ describe('TransactionFeed', () => {
 
   test('ignores duplicate transaction ids', () => {
     const { subscribe, handlersRef, auditAppender } = createControllableSubscriber();
-    render(<TransactionFeed subscribe={subscribe} auditAppender={auditAppender} />);
+    renderWithProviders(<TransactionFeed subscribe={subscribe} auditAppender={auditAppender} />);
 
     act(() => {
       handlersRef.current?.onMessage(feedTx({ id: 'dup' }));
@@ -162,7 +167,7 @@ describe('TransactionFeed', () => {
 
   test('shows a failed icon label for unsuccessful transactions', () => {
     const { subscribe, handlersRef, auditAppender } = createControllableSubscriber();
-    render(<TransactionFeed subscribe={subscribe} auditAppender={auditAppender} />);
+    renderWithProviders(<TransactionFeed subscribe={subscribe} auditAppender={auditAppender} />);
 
     act(() => {
       handlersRef.current?.onMessage(feedTx({ successful: false }));
@@ -174,7 +179,7 @@ describe('TransactionFeed', () => {
   test('surfaces a disconnected status and message on stream error', () => {
     const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
     const { subscribe, handlersRef, auditAppender } = createControllableSubscriber();
-    render(<TransactionFeed subscribe={subscribe} auditAppender={auditAppender} />);
+    renderWithProviders(<TransactionFeed subscribe={subscribe} auditAppender={auditAppender} />);
 
     act(() => {
       handlersRef.current?.onError(new Error('stream dropped'));
@@ -190,7 +195,7 @@ describe('TransactionFeed', () => {
 
   test('unsubscribes from the stream on unmount', () => {
     const { subscribe, unsubscribe, auditAppender } = createControllableSubscriber();
-    const { unmount } = render(<TransactionFeed subscribe={subscribe} auditAppender={auditAppender} />);
+    const { unmount } = renderWithProviders(<TransactionFeed subscribe={subscribe} auditAppender={auditAppender} />);
 
     expect(unsubscribe).not.toHaveBeenCalled();
     unmount();

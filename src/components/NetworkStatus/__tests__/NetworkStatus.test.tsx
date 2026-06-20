@@ -1,6 +1,11 @@
 import { act, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, jest, test } from '@jest/globals';
+import { NetworkProvider } from '@/context/NetworkContext';
 import NetworkStatus, { HEARTBEAT_INTERVAL_MS, RPC_REQUEST_TIMEOUT_MS, fetchRpcHealth } from '../NetworkStatus';
+
+function renderWithProviders(element: React.ReactElement) {
+  return render(<NetworkProvider>{element}</NetworkProvider>);
+}
 
 describe('fetchRpcHealth', () => {
   afterEach(() => {
@@ -75,7 +80,7 @@ describe('NetworkStatus', () => {
       .mockRejectedValueOnce(new TypeError('network down'));
     const now = jest.fn<() => number>().mockReturnValueOnce(1_000).mockReturnValueOnce(1_042).mockReturnValue(2_000);
 
-    render(<NetworkStatus endpoint="https://rpc.example" fetcher={fetcher} now={now} />);
+    renderWithProviders(<NetworkStatus endpoint="https://rpc.example" fetcher={fetcher} now={now} />);
 
     expect(screen.getByText('https://rpc.example')).toBeTruthy();
     expect(await screen.findByText('Healthy')).toBeTruthy();
@@ -106,7 +111,7 @@ describe('NetworkStatus', () => {
     );
     const now = jest.fn<() => number>().mockReturnValue(1_000);
 
-    render(<NetworkStatus endpoint="https://rpc.example" fetcher={fetcher} now={now} />);
+    renderWithProviders(<NetworkStatus endpoint="https://rpc.example" fetcher={fetcher} now={now} />);
 
     expect(screen.getByText('Checking RPC health...')).toBeTruthy();
 
@@ -138,7 +143,7 @@ describe('NetworkStatus', () => {
     );
     const now = jest.fn<() => number>().mockReturnValueOnce(1_000).mockReturnValueOnce(1_010).mockReturnValue(1_010);
 
-    render(<NetworkStatus endpoint="https://rpc.example" fetcher={fetcher} now={now} />);
+    renderWithProviders(<NetworkStatus endpoint="https://rpc.example" fetcher={fetcher} now={now} />);
 
     await act(async () => {
       await Promise.resolve();
@@ -168,7 +173,7 @@ describe('NetworkStatus', () => {
       .mockRejectedValueOnce(new TypeError('network down'));
     const now = jest.fn<() => number>().mockReturnValueOnce(1_000).mockReturnValueOnce(2_000).mockReturnValueOnce(2_030);
 
-    render(<NetworkStatus endpoint="https://rpc.example" fetcher={fetcher} now={now} />);
+    renderWithProviders(<NetworkStatus endpoint="https://rpc.example" fetcher={fetcher} now={now} />);
 
     await act(async () => {
       jest.advanceTimersByTime(HEARTBEAT_INTERVAL_MS);

@@ -301,7 +301,7 @@ describe('AuditSessionTimer', () => {
 
     act(() => { jest.advanceTimersByTime(2000); });
 
-    expect(screen.getByText('complete')).toBeTruthy();
+    expect(screen.getByText('Complete')).toBeTruthy();
     expect(screen.getByText('00:00')).toBeTruthy();
   });
 
