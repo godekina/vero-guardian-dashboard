@@ -3,6 +3,7 @@ export { default as SecurityScannerResults, getSecurityScannerSnapshot } from '.
 export { default as VulnerabilityList } from './VulnerabilityList';
 export { default as VulnerabilityWarning } from './VulnerabilityWarning';
 export { default as RelayerVault } from './RelayerVault';
+export { default as AuditExport } from './AuditExport';
 export {
   normalizeSeverity,
   parseVulnerabilityResults,
