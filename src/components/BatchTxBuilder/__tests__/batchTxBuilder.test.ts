@@ -4,6 +4,8 @@ import {
   MAX_DATA_NAME_BYTES,
   createOperationId,
   emptyDraft,
+  extractSorobanInvocation,
+  isSorobanDraft,
   moveOperation,
   removeOperation,
   shortenAddress,
@@ -15,6 +17,7 @@ import {
 
 const VALID_DESTINATION = StellarSdk.Keypair.random().publicKey();
 const SOURCE = StellarSdk.Keypair.random().publicKey();
+const VALID_CONTRACT_ID = 'CA3D5KRYM6CB7OWQ6TWYRR3Z4T7GNZLKERYNZGGA5SOAOPIFY6YQGAXE';
 
 function queued(id: string): QueuedOperation {
   return { id, draft: emptyDraft('vote') };
@@ -149,5 +152,88 @@ describe('moveOperation', () => {
     expect(moveOperation(ops, 1, 'down').map((o) => o.id)).toEqual(['a', 'c', 'b']);
     expect(moveOperation(ops, 0, 'up')).toBe(ops); // no-op returns the same array
     expect(moveOperation(ops, 2, 'down')).toBe(ops);
+  });
+});
+
+describe('emptyDraft (Soroban)', () => {
+  test('creates a blank sorobanVote draft', () => {
+    const draft = emptyDraft('sorobanVote');
+    expect(draft).toEqual({ type: 'sorobanVote', contractId: '', prId: '', choice: 'approve' });
+  });
+
+  test('creates a blank sorobanHalt draft', () => {
+    const draft = emptyDraft('sorobanHalt');
+    expect(draft).toEqual({ type: 'sorobanHalt', contractId: '' });
+  });
+});
+
+describe('isSorobanDraft', () => {
+  test('returns true for Soroban operation types', () => {
+    expect(isSorobanDraft({ type: 'sorobanVote', contractId: VALID_CONTRACT_ID, prId: '5', choice: 'approve' })).toBe(true);
+    expect(isSorobanDraft({ type: 'sorobanHalt', contractId: VALID_CONTRACT_ID })).toBe(true);
+  });
+
+  test('returns false for classic operation types', () => {
+    expect(isSorobanDraft({ type: 'vote', prId: '5', choice: 'approve' })).toBe(false);
+    expect(isSorobanDraft({ type: 'data', name: 'key', value: 'val' })).toBe(false);
+    expect(isSorobanDraft({ type: 'payment', destination: VALID_DESTINATION, amount: '10' })).toBe(false);
+  });
+});
+
+describe('validateDraft (Soroban)', () => {
+  test('accepts a well-formed sorobanVote', () => {
+    expect(validateDraft({ type: 'sorobanVote', contractId: VALID_CONTRACT_ID, prId: '42', choice: 'approve' })).toBeNull();
+  });
+
+  test('accepts a well-formed sorobanHalt', () => {
+    expect(validateDraft({ type: 'sorobanHalt', contractId: VALID_CONTRACT_ID })).toBeNull();
+  });
+
+  test('rejects sorobanVote with missing contract ID', () => {
+    expect(validateDraft({ type: 'sorobanVote', contractId: '', prId: '42', choice: 'approve' })).toBe('CONTRACT_ID_INVALID');
+  });
+
+  test('rejects sorobanVote with non-numeric PR number', () => {
+    expect(validateDraft({ type: 'sorobanVote', contractId: VALID_CONTRACT_ID, prId: 'abc', choice: 'approve' })).toBe('PR_INVALID');
+  });
+
+  test('rejects sorobanHalt with invalid contract ID', () => {
+    expect(validateDraft({ type: 'sorobanHalt', contractId: 'G12345' })).toBe('CONTRACT_ID_INVALID');
+  });
+});
+
+describe('extractSorobanInvocation', () => {
+  test('extracts vote invocation from sorobanVote draft', () => {
+    const invocation = extractSorobanInvocation({
+      type: 'sorobanVote',
+      contractId: VALID_CONTRACT_ID,
+      prId: '7',
+      choice: 'reject',
+    });
+    expect(invocation.contractId).toBe(VALID_CONTRACT_ID);
+    expect(invocation.method).toBe('vote');
+    expect(invocation.args).toHaveLength(2);
+  });
+
+  test('extracts halt invocation from sorobanHalt draft', () => {
+    const invocation = extractSorobanInvocation({
+      type: 'sorobanHalt',
+      contractId: VALID_CONTRACT_ID,
+    });
+    expect(invocation.contractId).toBe(VALID_CONTRACT_ID);
+    expect(invocation.method).toBe('halt');
+    expect(invocation.args).toHaveLength(0);
+  });
+});
+
+describe('summarizeDraft (Soroban)', () => {
+  test('describes sorobanVote operation', () => {
+    expect(summarizeDraft({ type: 'sorobanVote', contractId: VALID_CONTRACT_ID, prId: '12', choice: 'approve' })).toBe(
+      'Soroban vote approve on PR #12',
+    );
+  });
+
+  test('describes sorobanHalt operation', () => {
+    expect(summarizeDraft({ type: 'sorobanHalt', contractId: VALID_CONTRACT_ID })).toContain('Soroban halt contract');
   });
 });

@@ -7,6 +7,8 @@ import {
   defaultBatchTransactionBuilder,
   type BroadcastBatchTransactionResult,
   type BuildBatchTransactionRequest,
+  type BuildSorobanTransactionRequest,
+  type SorobanTransactionResult,
 } from '@/services/txBuilder';
 import {
   DRAFT_ERROR_MESSAGES,
@@ -14,6 +16,8 @@ import {
   OPERATION_TYPES,
   createOperationId,
   emptyDraft,
+  extractSorobanInvocation,
+  isSorobanDraft,
   moveOperation,
   removeOperation,
   summarizeDraft,
@@ -22,19 +26,28 @@ import {
   type OperationDraft,
   type OperationType,
   type QueuedOperation,
+  type SorobanHaltOperationDraft,
+  type SorobanVoteOperationDraft,
 } from './batchTxBuilder';
+
+type BatchTxResult = BroadcastBatchTransactionResult | SorobanTransactionResult;
 
 /** The slice of the batch transaction service this component depends on. */
 export interface BatchBroadcaster {
   signAndBroadcastBatchTransaction(
     request: BuildBatchTransactionRequest,
   ): Promise<BroadcastBatchTransactionResult>;
+  buildSorobanAndSend?(
+    request: BuildSorobanTransactionRequest,
+  ): Promise<SorobanTransactionResult>;
 }
 
 const OPERATION_TYPE_LABELS: Record<OperationType, string> = {
   vote: 'Vote',
   data: 'Manage data',
   payment: 'Payment',
+  sorobanVote: 'Soroban vote',
+  sorobanHalt: 'Soroban halt',
 };
 
 export interface BatchTxBuilderProps {
@@ -66,7 +79,7 @@ export default function BatchTxBuilder({
   const [operations, setOperations] = useState<QueuedOperation[]>([]);
   const [draft, setDraft] = useState<OperationDraft>(() => emptyDraft('vote'));
   const [isBroadcasting, setIsBroadcasting] = useState(false);
-  const [result, setResult] = useState<BroadcastBatchTransactionResult | null>(null);
+  const [result, setResult] = useState<BatchTxResult | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const draftError = useMemo(() => validateDraft(draft), [draft]);
@@ -102,6 +115,8 @@ export default function BatchTxBuilder({
     setError(null);
   };
 
+  const hasSoroban = operations.some((op) => isSorobanDraft(op.draft));
+
   const broadcast = async () => {
     if (!publicKey || operations.length === 0 || isBroadcasting) {
       return;
@@ -112,13 +127,31 @@ export default function BatchTxBuilder({
     setResult(null);
 
     try {
-      const stellarOperations = operations.map((operation) => toStellarOperation(operation.draft));
-      const broadcastResult = await broadcaster.signAndBroadcastBatchTransaction({
-        sourceAccount: publicKey,
-        operations: stellarOperations,
-      });
-      setResult(broadcastResult);
-      setOperations([]);
+      if (hasSoroban) {
+        const classicOps = operations
+          .filter((op) => !isSorobanDraft(op.draft))
+          .map((op) => toStellarOperation(op.draft));
+        const invocations = operations
+          .filter((op) => isSorobanDraft(op.draft))
+          .map((op) => extractSorobanInvocation(op.draft as SorobanVoteOperationDraft | SorobanHaltOperationDraft));
+
+        const sorobanBroadcaster = broadcaster.buildSorobanAndSend ?? defaultBatchTransactionBuilder.buildSorobanAndSend.bind(defaultBatchTransactionBuilder);
+        const sorobanResult = await sorobanBroadcaster({
+          sourceAccount: publicKey,
+          invocations,
+          classicOperations: classicOps.length > 0 ? classicOps : undefined,
+        });
+        setResult(sorobanResult);
+        setOperations([]);
+      } else {
+        const stellarOperations = operations.map((operation) => toStellarOperation(operation.draft));
+        const broadcastResult = await broadcaster.signAndBroadcastBatchTransaction({
+          sourceAccount: publicKey,
+          operations: stellarOperations,
+        });
+        setResult(broadcastResult);
+        setOperations([]);
+      }
     } catch (broadcastError) {
       setError(getErrorMessage(broadcastError));
     } finally {
@@ -241,6 +274,60 @@ export default function BatchTxBuilder({
               />
             </label>
           </div>
+        )}
+
+        {draft.type === 'sorobanVote' && (
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <label className="block text-xs font-medium text-slate-600 dark:text-slate-300">
+              Contract ID
+              <input
+                data-testid="soroban-vote-contract"
+                type="text"
+                className="mt-1 block w-full rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-sm px-3 py-2 font-mono focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                value={draft.contractId}
+                onChange={(event) => updateDraft({ contractId: event.target.value })}
+                placeholder="C..."
+              />
+            </label>
+            <label className="block text-xs font-medium text-slate-600 dark:text-slate-300">
+              PR number
+              <input
+                data-testid="soroban-vote-pr"
+                type="text"
+                inputMode="numeric"
+                className="mt-1 block w-full rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-sm px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                value={draft.prId}
+                onChange={(event) => updateDraft({ prId: event.target.value })}
+                placeholder="42"
+              />
+            </label>
+            <label className="block text-xs font-medium text-slate-600 dark:text-slate-300">
+              Choice
+              <select
+                data-testid="soroban-vote-choice"
+                className="mt-1 block w-full rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-sm px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                value={draft.choice}
+                onChange={(event) => updateDraft({ choice: event.target.value as 'approve' | 'reject' })}
+              >
+                <option value="approve">Approve</option>
+                <option value="reject">Reject</option>
+              </select>
+            </label>
+          </div>
+        )}
+
+        {draft.type === 'sorobanHalt' && (
+          <label className="block text-xs font-medium text-slate-600 dark:text-slate-300">
+            Contract ID
+            <input
+              data-testid="soroban-halt-contract"
+              type="text"
+              className="mt-1 block w-full rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-sm px-3 py-2 font-mono focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              value={draft.contractId}
+              onChange={(event) => updateDraft({ contractId: event.target.value })}
+              placeholder="C..."
+            />
+          </label>
         )}
 
         <div className="flex items-center justify-between gap-3">
@@ -378,7 +465,7 @@ export default function BatchTxBuilder({
           >
             <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 mt-0.5 shrink-0" aria-hidden="true" />
             <span className="text-slate-700 dark:text-slate-200">
-              Broadcast {result.operationCount} operation{result.operationCount === 1 ? '' : 's'} in tx{' '}
+              {'sendResponse' in result ? 'Soroban tx' : 'Broadcast'} {result.operationCount} operation{result.operationCount === 1 ? '' : 's'} in{' '}
               <span className="font-mono text-emerald-700 dark:text-emerald-400">{shortenHash(result.hash)}</span>
             </span>
           </div>

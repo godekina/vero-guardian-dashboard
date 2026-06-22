@@ -3,6 +3,8 @@ import {
   BatchTransactionBuilder,
   BatchTxBuilderError,
   type BuildBatchTransactionRequest,
+  type BuildSorobanTransactionRequest,
+  type SorobanRpcServer,
   type StellarOperation,
   type StellarTransactionServer,
   type SubmitTransactionResult,
@@ -251,5 +253,106 @@ describe('BatchTransactionBuilder', () => {
     await expect(builder.buildBatchTransaction(buildRequest())).rejects.toMatchObject({
       code: 'ACCOUNT_LOAD_FAILED',
     });
+  });
+});
+
+describe('BatchTransactionBuilder (Soroban)', () => {
+  let publicKey: string;
+  let server: MockServer;
+  let signer: jest.MockedFunction<TransactionSigner>;
+  let sorobanServer: jest.Mocked<SorobanRpcServer>;
+  let builder: BatchTransactionBuilder;
+
+  beforeEach(() => {
+    publicKey = StellarSdk.Keypair.random().publicKey();
+    server = makeServer(publicKey);
+    signer = makeSigner();
+    sorobanServer = {
+      getAccount: jest.fn(
+        async (_sourceAccount: string) => new StellarSdk.Account(publicKey, '10'),
+      ),
+      simulateTransaction: jest.fn(
+        async (_tx: StellarSdk.Transaction | StellarSdk.FeeBumpTransaction) => ({
+          id: '1',
+          latestLedger: 100,
+          transactionData: new StellarSdk.SorobanDataBuilder(),
+          minResourceFee: '100',
+          cost: { cpuInsns: '0', memBytes: '0' },
+        } as unknown as StellarSdk.SorobanRpc.Api.SimulateTransactionResponse),
+      ),
+      sendTransaction: jest.fn(
+        async (_tx: StellarSdk.Transaction | StellarSdk.FeeBumpTransaction) => ({
+          hash: 'f'.repeat(64),
+          status: 'PENDING',
+        } as unknown as StellarSdk.SorobanRpc.Api.SendTransactionResponse),
+      ),
+    };
+    builder = new BatchTransactionBuilder({
+      server,
+      signer,
+      sorobanServer,
+      networkPassphrase: StellarSdk.Networks.TESTNET,
+    });
+  });
+
+  const validInvocation = {
+    contractId: 'CA3D5KRYM6CB7OWQ6TWYRR3Z4T7GNZLKERYNZGGA5SOAOPIFY6YQGAXE',
+    method: 'halt' as const,
+    args: [] as readonly StellarSdk.xdr.ScVal[],
+  };
+
+  function sorobanRequest(overrides: Partial<BuildSorobanTransactionRequest> = {}): BuildSorobanTransactionRequest {
+    return {
+      sourceAccount: publicKey,
+      invocations: [validInvocation],
+      networkPassphrase: StellarSdk.Networks.TESTNET,
+      ...overrides,
+    };
+  }
+
+  it('builds a Soroban transaction with simulation and assembly', async () => {
+    const prepared = await builder.buildSorobanTransaction(sorobanRequest());
+
+    expect(prepared.operationCount).toBe(1);
+    expect(prepared.sorobanOperations).toBe(1);
+    expect(prepared.sourceAccount).toBe(publicKey);
+    expect(prepared.unsignedEnvelopeXdr).toEqual(expect.any(String));
+    expect(sorobanServer.simulateTransaction).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects Soroban transactions with no invocations', async () => {
+    await expect(
+      builder.buildSorobanTransaction(sorobanRequest({ invocations: [] })),
+    ).rejects.toMatchObject({ code: 'EMPTY_OPERATIONS' });
+  });
+
+  it('fails when simulation returns an error', async () => {
+    sorobanServer.simulateTransaction.mockResolvedValueOnce({
+      id: '1',
+      latestLedger: 100,
+      error: 'Simulation failed: contract error',
+    } as unknown as StellarSdk.SorobanRpc.Api.SimulateTransactionResponse);
+
+    await expect(
+      builder.buildSorobanTransaction(sorobanRequest()),
+    ).rejects.toMatchObject({ code: 'SOROBAN_SIMULATION_FAILED' });
+  });
+
+  it('sends a signed Soroban transaction and returns the hash', async () => {
+    const prepared = await builder.buildSorobanTransaction(sorobanRequest());
+    const signed = await builder.signBatchTransaction({ preparedTransaction: prepared });
+    const result = await builder.sendSorobanTransaction({ signedTransaction: signed });
+
+    expect(result.hash).toBe('f'.repeat(64));
+    expect(sorobanServer.sendTransaction).toHaveBeenCalledTimes(1);
+  });
+
+  it('builds, signs, and sends in a single call (buildSorobanAndSend)', async () => {
+    const result = await builder.buildSorobanAndSend(sorobanRequest());
+
+    expect(result.hash).toBe('f'.repeat(64));
+    expect(sorobanServer.simulateTransaction).toHaveBeenCalledTimes(1);
+    expect(signer).toHaveBeenCalledTimes(1);
+    expect(sorobanServer.sendTransaction).toHaveBeenCalledTimes(1);
   });
 });

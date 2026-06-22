@@ -1,6 +1,7 @@
 import * as StellarSdk from '@stellar/stellar-sdk';
 import { signTransaction } from '@stellar/freighter-api';
 import { z } from 'zod';
+import type { SorobanInvocation } from '@/components/BatchTxBuilder/batchTxBuilder';
 
 const DEFAULT_HORIZON_URL =
   process.env.NEXT_PUBLIC_HORIZON_URL ?? 'https://horizon-testnet.stellar.org';
@@ -59,7 +60,10 @@ export type BatchTxBuilderErrorCode =
   | 'ACCOUNT_LOAD_FAILED'
   | 'SIGNING_FAILED'
   | 'BROADCAST_FAILED'
-  | 'STALE_SEQUENCE';
+  | 'STALE_SEQUENCE'
+  | 'SOROBAN_SIMULATION_FAILED'
+  | 'SOROBAN_SEND_FAILED'
+  | 'MIXED_BATCH_NOT_SUPPORTED';
 
 export class BatchTxBuilderError extends Error {
   readonly code: BatchTxBuilderErrorCode;
@@ -96,9 +100,17 @@ export interface StellarTransactionServer {
   submitTransaction(transaction: SubmitTransactionInput): Promise<SubmitTransactionResult>;
 }
 
+export interface SorobanRpcServer {
+  getAccount(sourceAccount: string): Promise<StellarSdk.Account>;
+  simulateTransaction(transaction: StellarSdk.Transaction | StellarSdk.FeeBumpTransaction): Promise<StellarSdk.SorobanRpc.Api.SimulateTransactionResponse>;
+  sendTransaction(transaction: StellarSdk.Transaction | StellarSdk.FeeBumpTransaction): Promise<StellarSdk.SorobanRpc.Api.SendTransactionResponse>;
+}
+
 export interface BatchTransactionBuilderOptions {
   horizonUrl?: string;
   server?: StellarTransactionServer;
+  sorobanRpcUrl?: string;
+  sorobanServer?: SorobanRpcServer;
   signer?: TransactionSigner;
   networkPassphrase?: string;
   fee?: string | number;
@@ -158,6 +170,40 @@ export interface BroadcastBatchTransactionResult {
   networkPassphrase: string;
   operationCount: number;
   sequenceNumber: string;
+  unsignedEnvelopeXdr: string;
+  signedEnvelopeXdr: string;
+}
+
+export interface BuildSorobanTransactionRequest {
+  sourceAccount: string;
+  invocations: readonly SorobanInvocation[];
+  classicOperations?: readonly StellarOperation[];
+  networkPassphrase?: string;
+  fee?: string | number;
+  timeout?: number;
+  sequence?: string;
+}
+
+export interface PreparedSorobanTransaction {
+  transaction: StellarSdk.Transaction;
+  unsignedEnvelopeXdr: string;
+  sourceAccount: string;
+  networkPassphrase: string;
+  fee: string;
+  operationCount: number;
+  sourceSequence: string;
+  sequenceNumber: string;
+  simulation: StellarSdk.SorobanRpc.Api.SimulateTransactionResponse;
+  sorobanOperations: number;
+}
+
+export interface SorobanTransactionResult {
+  hash: string;
+  sendResponse: StellarSdk.SorobanRpc.Api.SendTransactionResponse;
+  sourceAccount: string;
+  networkPassphrase: string;
+  operationCount: number;
+  sorobanOperations: number;
   unsignedEnvelopeXdr: string;
   signedEnvelopeXdr: string;
 }
@@ -301,8 +347,12 @@ async function withSequenceLock<T>(
   }
 }
 
+const DEFAULT_SOROBAN_RPC_URL =
+  process.env.NEXT_PUBLIC_SOROBAN_RPC_URL ?? 'https://soroban-testnet.stellar.org';
+
 export class BatchTransactionBuilder {
   private readonly server: StellarTransactionServer;
+  private readonly sorobanServer: SorobanRpcServer;
   private readonly signer: TransactionSigner;
   private readonly defaultNetworkPassphrase: string;
   private readonly defaultFee?: string | number;
@@ -313,6 +363,8 @@ export class BatchTransactionBuilder {
   constructor(options: BatchTransactionBuilderOptions = {}) {
     this.server =
       options.server ?? new StellarSdk.Horizon.Server(options.horizonUrl ?? DEFAULT_HORIZON_URL);
+    this.sorobanServer =
+      options.sorobanServer ?? new StellarSdk.SorobanRpc.Server(options.sorobanRpcUrl ?? DEFAULT_SOROBAN_RPC_URL);
     this.signer = options.signer ?? signTransaction;
     this.defaultNetworkPassphrase = options.networkPassphrase ?? DEFAULT_NETWORK_PASSPHRASE;
     this.defaultFee = options.fee;
@@ -501,6 +553,153 @@ export class BatchTransactionBuilder {
     }
   }
 
+  async buildSorobanTransaction(
+    request: BuildSorobanTransactionRequest,
+  ): Promise<PreparedSorobanTransaction> {
+    const sourceAccount = trimRequired(
+      request.sourceAccount,
+      'MISSING_SOURCE_ACCOUNT',
+      'Soroban transactions require a source account public key.',
+    );
+    const networkPassphrase = trimRequired(
+      request.networkPassphrase ?? this.defaultNetworkPassphrase,
+      'MISSING_NETWORK_PASSPHRASE',
+      'Soroban transactions require a Stellar network passphrase.',
+    );
+    const fee = normalizeFee(request.fee ?? this.defaultFee);
+    const timeout = normalizeTimeout(request.timeout ?? this.defaultTimeout);
+
+    if (!request.invocations || request.invocations.length === 0) {
+      throw new BatchTxBuilderError(
+        'EMPTY_OPERATIONS',
+        'Soroban transactions require at least one contract invocation.',
+      );
+    }
+
+    const sourceSequence = await this.resolveSourceSequence({
+      sourceAccount,
+      networkPassphrase,
+      sequence: request.sequence,
+      refreshSequence: false,
+    });
+    const source = new StellarSdk.Account(sourceAccount, sourceSequence);
+    const builder = new StellarSdk.TransactionBuilder(source, { fee, networkPassphrase });
+
+    // Add classic operations first (if any)
+    if (request.classicOperations) {
+      for (const op of request.classicOperations) {
+        builder.addOperation(op);
+      }
+    }
+
+    // Add Soroban invocations as host function operations
+    for (const invocation of request.invocations) {
+      const contract = new StellarSdk.Contract(invocation.contractId);
+      builder.addOperation(contract.call(invocation.method, ...invocation.args));
+    }
+
+    const rawTransaction = builder.setTimeout(timeout).build();
+
+    let simulation: StellarSdk.SorobanRpc.Api.SimulateTransactionResponse;
+    try {
+      simulation = await this.sorobanServer.simulateTransaction(rawTransaction);
+    } catch (error) {
+      throw new BatchTxBuilderError(
+        'SOROBAN_SIMULATION_FAILED',
+        'Soroban transaction simulation failed.',
+        error,
+      );
+    }
+
+    if (StellarSdk.SorobanRpc.Api.isSimulationError(simulation)) {
+      throw new BatchTxBuilderError(
+        'SOROBAN_SIMULATION_FAILED',
+        `Soroban simulation error: ${simulation.error}`,
+      );
+    }
+
+    const assembledTransaction = StellarSdk.SorobanRpc.assembleTransaction(rawTransaction, simulation) as StellarSdk.TransactionBuilder;
+    const builtTransaction = assembledTransaction.build();
+
+    const sequenceNumber = incrementSequence(sourceSequence);
+
+    return {
+      transaction: builtTransaction,
+      unsignedEnvelopeXdr: builtTransaction.toXDR(),
+      sourceAccount,
+      networkPassphrase,
+      fee,
+      operationCount: (request.classicOperations?.length ?? 0) + request.invocations.length,
+      sourceSequence,
+      sequenceNumber,
+      simulation,
+      sorobanOperations: request.invocations.length,
+    };
+  }
+
+  async sendSorobanTransaction({
+    signedTransaction,
+  }: {
+    signedTransaction: SignedBatchTransaction;
+  }): Promise<SorobanTransactionResult> {
+    try {
+      const sendResponse = await this.sorobanServer.sendTransaction(
+        signedTransaction.signedTransaction,
+      );
+
+      return {
+        hash: sendResponse.hash,
+        sendResponse,
+        sourceAccount: signedTransaction.sourceAccount,
+        networkPassphrase: signedTransaction.networkPassphrase,
+        operationCount: signedTransaction.operationCount,
+        sorobanOperations: 0,
+        unsignedEnvelopeXdr: signedTransaction.unsignedEnvelopeXdr,
+        signedEnvelopeXdr: signedTransaction.signedEnvelopeXdr,
+      };
+    } catch (error) {
+      throw new BatchTxBuilderError(
+        'SOROBAN_SEND_FAILED',
+        'Unable to send signed Soroban transaction.',
+        error,
+      );
+    }
+  }
+
+  async buildSorobanAndSend(
+    request: BuildSorobanTransactionRequest,
+  ): Promise<SorobanTransactionResult> {
+    const sourceAccount = trimRequired(
+      request.sourceAccount,
+      'MISSING_SOURCE_ACCOUNT',
+      'Soroban transactions require a source account public key.',
+    );
+    const networkPassphrase = trimRequired(
+      request.networkPassphrase ?? this.defaultNetworkPassphrase,
+      'MISSING_NETWORK_PASSPHRASE',
+      'Soroban transactions require a Stellar network passphrase.',
+    );
+
+    const preparedTransaction = await this.buildSorobanTransaction({
+      ...request,
+      sourceAccount,
+      networkPassphrase,
+    });
+
+    const signedTransaction = await this.signBatchTransaction({ preparedTransaction: {
+      transaction: preparedTransaction.transaction,
+      unsignedEnvelopeXdr: preparedTransaction.unsignedEnvelopeXdr,
+      sourceAccount: preparedTransaction.sourceAccount,
+      networkPassphrase: preparedTransaction.networkPassphrase,
+      fee: preparedTransaction.fee,
+      operationCount: preparedTransaction.operationCount,
+      sourceSequence: preparedTransaction.sourceSequence,
+      sequenceNumber: preparedTransaction.sequenceNumber,
+    } });
+
+    return this.sendSorobanTransaction({ signedTransaction });
+  }
+
   async signAndBroadcastBatchTransaction(
     request: BuildBatchTransactionRequest,
   ): Promise<BroadcastBatchTransactionResult> {
@@ -600,4 +799,22 @@ export function signAndBroadcastBatchTransaction(
   request: BuildBatchTransactionRequest,
 ): Promise<BroadcastBatchTransactionResult> {
   return defaultBatchTransactionBuilder.signAndBroadcastBatchTransaction(request);
+}
+
+export function buildSorobanTransaction(
+  request: BuildSorobanTransactionRequest,
+): Promise<PreparedSorobanTransaction> {
+  return defaultBatchTransactionBuilder.buildSorobanTransaction(request);
+}
+
+export function sendSorobanTransaction(request: {
+  signedTransaction: SignedBatchTransaction;
+}): Promise<SorobanTransactionResult> {
+  return defaultBatchTransactionBuilder.sendSorobanTransaction(request);
+}
+
+export function buildSorobanAndSend(
+  request: BuildSorobanTransactionRequest,
+): Promise<SorobanTransactionResult> {
+  return defaultBatchTransactionBuilder.buildSorobanAndSend(request);
 }

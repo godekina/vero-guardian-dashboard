@@ -11,7 +11,7 @@ import type { StellarOperation } from '@/services/txBuilder';
 
 export type VoteChoice = 'approve' | 'reject';
 
-export const OPERATION_TYPES = ['vote', 'data', 'payment'] as const;
+export const OPERATION_TYPES = ['vote', 'data', 'payment', 'sorobanVote', 'sorobanHalt'] as const;
 export type OperationType = (typeof OPERATION_TYPES)[number];
 
 /** Stellar caps a single transaction at 100 operations. */
@@ -68,15 +68,42 @@ export const PaymentOperationDraftSchema = z.object({
   ),
 });
 
+const SOROBAN_CONTRACT_ID_REGEX = /^C[A-Z0-9]{55}$/;
+
+export const SorobanVoteOperationDraftSchema = z.object({
+  type: z.literal('sorobanVote'),
+  contractId: z.string().trim().refine(
+    (val) => SOROBAN_CONTRACT_ID_REGEX.test(val),
+    { message: 'CONTRACT_ID_INVALID' }
+  ),
+  prId: z.string().trim().min(1, 'PR_REQUIRED').refine(
+    (val) => /^\d+$/.test(val) && Number(val) > 0,
+    { message: 'PR_INVALID' }
+  ),
+  choice: z.enum(['approve', 'reject']),
+});
+
+export const SorobanHaltOperationDraftSchema = z.object({
+  type: z.literal('sorobanHalt'),
+  contractId: z.string().trim().refine(
+    (val) => SOROBAN_CONTRACT_ID_REGEX.test(val),
+    { message: 'CONTRACT_ID_INVALID' }
+  ),
+});
+
 export const OperationDraftSchema = z.discriminatedUnion('type', [
   VoteOperationDraftSchema,
   DataOperationDraftSchema,
   PaymentOperationDraftSchema,
+  SorobanVoteOperationDraftSchema,
+  SorobanHaltOperationDraftSchema,
 ]);
 
 export interface VoteOperationDraft extends z.infer<typeof VoteOperationDraftSchema> {}
 export interface DataOperationDraft extends z.infer<typeof DataOperationDraftSchema> {}
 export interface PaymentOperationDraft extends z.infer<typeof PaymentOperationDraftSchema> {}
+export interface SorobanVoteOperationDraft extends z.infer<typeof SorobanVoteOperationDraftSchema> {}
+export interface SorobanHaltOperationDraft extends z.infer<typeof SorobanHaltOperationDraftSchema> {}
 export type OperationDraft = z.infer<typeof OperationDraftSchema>;
 
 export interface QueuedOperation {
@@ -92,7 +119,8 @@ export type DraftErrorCode =
   | 'NAME_TOO_LONG'
   | 'VALUE_TOO_LONG'
   | 'DESTINATION_INVALID'
-  | 'AMOUNT_INVALID';
+  | 'AMOUNT_INVALID'
+  | 'CONTRACT_ID_INVALID';
 
 export const DRAFT_ERROR_MESSAGES: Record<DraftErrorCode, string> = {
   PR_REQUIRED: 'Enter the PR number to vote on.',
@@ -102,6 +130,7 @@ export const DRAFT_ERROR_MESSAGES: Record<DraftErrorCode, string> = {
   VALUE_TOO_LONG: `Data value must be at most ${MAX_DATA_VALUE_BYTES} bytes.`,
   DESTINATION_INVALID: 'Enter a valid Stellar destination address (G...).',
   AMOUNT_INVALID: 'Enter a positive amount with up to 7 decimal places.',
+  CONTRACT_ID_INVALID: 'Enter a valid Soroban contract ID (C...).',
 };
 
 /** Create a blank draft for the given operation type. */
@@ -113,7 +142,16 @@ export function emptyDraft(type: OperationType): OperationDraft {
       return { type: 'data', name: '', value: '' };
     case 'payment':
       return { type: 'payment', destination: '', amount: '' };
+    case 'sorobanVote':
+      return { type: 'sorobanVote', contractId: '', prId: '', choice: 'approve' };
+    case 'sorobanHalt':
+      return { type: 'sorobanHalt', contractId: '' };
   }
+}
+
+/** True when a draft requires Soroban RPC simulation instead of classic Horizon submission. */
+export function isSorobanDraft(draft: OperationDraft): draft is SorobanVoteOperationDraft | SorobanHaltOperationDraft {
+  return draft.type === 'sorobanVote' || draft.type === 'sorobanHalt';
 }
 
 let idCounter = 0;
@@ -165,6 +203,38 @@ export function toStellarOperation(draft: OperationDraft): StellarOperation {
         asset: StellarSdk.Asset.native(),
         amount: draft.amount.trim(),
       });
+    default:
+      throw new Error(`Cannot convert ${(draft as OperationDraft).type} draft to a classic Stellar operation.`);
+  }
+}
+
+export interface SorobanInvocation {
+  contractId: string;
+  method: string;
+  args: readonly StellarSdk.xdr.ScVal[];
+}
+
+/**
+ * Convert a Soroban draft into contract invocation parameters.
+ * Throws when the draft is not a Soroban type.
+ */
+export function extractSorobanInvocation(draft: SorobanVoteOperationDraft | SorobanHaltOperationDraft): SorobanInvocation {
+  switch (draft.type) {
+    case 'sorobanVote':
+      return {
+        contractId: draft.contractId.trim(),
+        method: 'vote',
+        args: [
+          StellarSdk.nativeToScVal(Number(draft.prId.trim()), { type: 'u32' }),
+          StellarSdk.nativeToScVal(draft.choice, { type: 'symbol' }),
+        ],
+      };
+    case 'sorobanHalt':
+      return {
+        contractId: draft.contractId.trim(),
+        method: 'halt',
+        args: [],
+      };
   }
 }
 
@@ -179,6 +249,10 @@ export function summarizeDraft(draft: OperationDraft): string {
     }
     case 'payment':
       return `Pay ${draft.amount.trim() || '0'} XLM to ${shortenAddress(draft.destination.trim())}`;
+    case 'sorobanVote':
+      return `Soroban vote ${draft.choice} on PR #${draft.prId.trim() || '?'}`;
+    case 'sorobanHalt':
+      return `Soroban halt contract ${shortenAddress(draft.contractId)}`;
   }
 }
 
