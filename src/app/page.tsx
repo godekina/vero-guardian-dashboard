@@ -22,6 +22,7 @@ import NetworkStatus from '@/components/NetworkStatus';
 import PRFeed from '@/components/PRFeed';
 import PushNotificationToggle from '@/components/PushNotificationToggle';
 import SecurityScannerResults, { RelayerVault, AuditExport } from '@/components/security';
+import ConsensusWidget from '@/components/ConsensusWidget';
 import ContractCallGraph from '@/components/ContractCallGraph';
 import TaskCard from '@/components/TaskCard';
 import ThemeToggle from '@/components/ThemeToggle';

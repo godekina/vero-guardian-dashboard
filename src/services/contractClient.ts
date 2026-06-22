@@ -1,6 +1,6 @@
 import * as StellarSdk from '@stellar/stellar-sdk';
 import { signTransaction } from '@stellar/freighter-api';
-import { defaultNetworkConfig, DEFAULT_HORIZON_URL } from './rpc';
+import { defaultNetworkConfig, DEFAULT_HORIZON_URL, CONSENSUS_THRESHOLD_KEY } from './rpc';
 
 /**
  * Build, Freighter-sign, and submit a vote transaction.
@@ -45,6 +45,103 @@ export async function castVote(
 
   const result = await server.submitTransaction(signedTx);
   return result.hash;
+}
+
+/**
+ * Fetch the current consensus progress for a given task from on-chain data.
+ *
+ * Reads vote weight entries from Horizon account data for the relayer account
+ * associated with the task. Falls back to default threshold if the on-chain
+ * `consensus_threshold` data entry is not found.
+ *
+ * @param taskId PR task ID to query consensus for
+ * @param horizonUrl Optional Horizon URL (defaults to env or testnet)
+ * @param networkPassphrase Optional network passphrase (defaults to testnet)
+ * @returns ConsensusData with current weight, threshold, approve/reject breakdown
+ */
+export async function getConsensusProgress(
+  taskId: string,
+  horizonUrl: string = defaultNetworkConfig.horizonUrl,
+  networkPassphrase: string = defaultNetworkConfig.networkPassphrase
+): Promise<{ currentWeight: number; threshold: number; approveWeight: number; rejectWeight: number }> {
+  const server = new StellarSdk.Horizon.Server(horizonUrl);
+
+  if (!taskId || typeof taskId !== 'string' || taskId.trim().length === 0) {
+    throw new Error('Invalid or missing taskId');
+  }
+
+  const triagedId = taskId.trim();
+
+  // Load the relayer account that stores the task/vote data entries
+  const relayerPublicKey = process.env.NEXT_PUBLIC_RELAYER_PUBLIC_KEY;
+  if (!relayerPublicKey) {
+    throw new Error('Relayer public key not configured (NEXT_PUBLIC_RELAYER_PUBLIC_KEY)');
+  }
+
+  let account;
+  try {
+    account = await server.loadAccount(relayerPublicKey);
+  } catch (err) {
+    throw new Error(`Failed to load relayer account for consensus data: ${err instanceof Error ? err.message : 'Unknown error'}`);
+  }
+
+  const dataAttr = (account as any).data_attr as Record<string, string> | undefined;
+  if (!dataAttr || typeof dataAttr !== 'object') {
+    return { currentWeight: 0, threshold: 51, approveWeight: 0, rejectWeight: 0 };
+  }
+
+  // Decode base64 Stellar data values
+  const decodeBase64 = (value: string): string => {
+    if (typeof atob === 'function') return atob(value);
+    return Buffer.from(value, 'base64').toString();
+  };
+
+  // Read consensus threshold from data entries (or use default)
+  let threshold = 51;
+  const thresholdRaw = dataAttr[CONSENSUS_THRESHOLD_KEY];
+  if (thresholdRaw) {
+    try {
+      const parsed = parseInt(decodeBase64(thresholdRaw).trim(), 10);
+      if (Number.isFinite(parsed) && parsed > 0) {
+        threshold = parsed;
+      }
+    } catch {
+      // Fall back to default threshold
+    }
+  }
+
+  // Read approve votes for this task
+  const approveKey = `vote_${triagedId}_approve`;
+  const approveRaw = dataAttr[approveKey];
+  let approveWeight = 0;
+  if (approveRaw) {
+    try {
+      approveWeight = parseInt(decodeBase64(approveRaw).trim(), 10) || 0;
+    } catch {
+      approveWeight = 0;
+    }
+  }
+
+  // Read reject votes for this task
+  const rejectKey = `vote_${triagedId}_reject`;
+  const rejectRaw = dataAttr[rejectKey];
+  let rejectWeight = 0;
+  if (rejectRaw) {
+    try {
+      rejectWeight = parseInt(decodeBase64(rejectRaw).trim(), 10) || 0;
+    } catch {
+      rejectWeight = 0;
+    }
+  }
+
+  const currentWeight = approveWeight + rejectWeight;
+
+  return {
+    currentWeight,
+    threshold,
+    approveWeight,
+    rejectWeight,
+  };
 }
 
 /**
