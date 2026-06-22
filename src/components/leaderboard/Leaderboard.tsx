@@ -1,71 +1,22 @@
 'use client';
 
 import type { ReactElement } from 'react';
-import { memo, useMemo, useState } from 'react';
-import { Medal, ShieldCheck, TrendingUp } from 'lucide-react';
+import { memo, useMemo, useState, useEffect, useCallback, useRef } from 'react';
+import { Medal, ShieldCheck, TrendingUp, RefreshCw } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import {
   type AuditContributorInput,
   type RankedAuditContributor,
   rankAuditContributors,
 } from './score';
+import { readAuditLogEvents } from '@/utils/logger';
+import type { AuditLogEvent } from '@/utils/logger';
+import { fetchContributorProfiles } from '@/services/profileClient';
 
 type LeaderboardWindow = 'all' | 'recent';
 
-const MOCK_AUDIT_ACTIVITY: AuditContributorInput[] = [
-  {
-    contributorId: 'guardian-ade',
-    displayName: 'Ade Martins',
-    walletAddress: 'GAD3MARTINS7K3R7KZK5F9HZM9R1N2P4Q6S8T0V2W4X6Y8Z0A2B4C6',
-    auditsCompleted: 11,
-    validationsSubmitted: 34,
-    criticalFindings: 4,
-    highFindings: 8,
-    mediumFindings: 13,
-    acceptedFindings: 21,
-    disputedFindings: 1,
-    lastAuditAt: '2026-06-14T10:20:00.000Z',
-  },
-  {
-    contributorId: 'guardian-nova',
-    displayName: 'Nova Chen',
-    walletAddress: 'GN0VACHEN7K3R7KZK5F9HZM9R1N2P4Q6S8T0V2W4X6Y8Z0A2',
-    auditsCompleted: 9,
-    validationsSubmitted: 42,
-    criticalFindings: 2,
-    highFindings: 11,
-    mediumFindings: 16,
-    acceptedFindings: 18,
-    disputedFindings: 0,
-    lastAuditAt: '2026-06-16T15:45:00.000Z',
-  },
-  {
-    contributorId: 'guardian-sol',
-    displayName: 'Sol Rivera',
-    walletAddress: 'GS0LRIVERA7K3R7KZK5F9HZM9R1N2P4Q6S8T0V2W4X6Y8Z0A',
-    auditsCompleted: 7,
-    validationsSubmitted: 26,
-    criticalFindings: 5,
-    highFindings: 5,
-    mediumFindings: 10,
-    acceptedFindings: 16,
-    disputedFindings: 2,
-    lastAuditAt: '2026-05-18T08:10:00.000Z',
-  },
-  {
-    contributorId: 'guardian-mira',
-    displayName: 'Mira Okafor',
-    walletAddress: 'GM1RAOKAFOR7K3R7KZK5F9HZM9R1N2P4Q6S8T0V2W4X6Y8Z0',
-    auditsCompleted: 5,
-    validationsSubmitted: 18,
-    criticalFindings: 1,
-    highFindings: 6,
-    mediumFindings: 12,
-    acceptedFindings: 11,
-    disputedFindings: 0,
-    lastAuditAt: '2026-06-11T12:00:00.000Z',
-  },
-];
+// Leaderboard now reads live audit events from the client-side audit logger
+// and aggregates them into contributor activity. See `readAuditLogEvents()`.
 
 const DATE_FORMATTER = new Intl.DateTimeFormat('en', {
   month: 'short',
@@ -89,6 +40,81 @@ function filterActivityByWindow(
 
     return Date.parse(contributor.lastAuditAt) >= cutoff;
   });
+}
+
+function mapEventsToContributors(events: AuditLogEvent[]): AuditContributorInput[] {
+  const map = new Map<string, AuditContributorInput>();
+
+  for (const e of events) {
+    const meta = (e as any).metadata ?? {};
+    const actor = e.actor ?? (typeof meta.actor === 'string' ? meta.actor : undefined);
+    const contribId = (meta.contributorId as string) ?? actor ?? e.id;
+    const displayName = (meta.displayName as string) ?? (meta.name as string) ?? contribId;
+
+    let c = map.get(contribId);
+    if (!c) {
+      c = {
+        contributorId: String(contribId),
+        displayName: String(displayName),
+        walletAddress: actor ?? undefined,
+        auditsCompleted: 0,
+        validationsSubmitted: 0,
+        criticalFindings: 0,
+        highFindings: 0,
+        mediumFindings: 0,
+        acceptedFindings: 0,
+        disputedFindings: 0,
+        lastAuditAt: undefined,
+      };
+    }
+
+    const pushFindingCount = (value: unknown) => {
+      if (typeof value === 'number' && Number.isFinite(value)) return Math.max(0, Math.trunc(value));
+      return 1;
+    };
+
+    switch (e.action) {
+      case 'complete_audit':
+        c.auditsCompleted += 1;
+        c.lastAuditAt = e.timestamp;
+        break;
+      case 'submit_validation':
+        c.validationsSubmitted += 1;
+        break;
+      case 'critical_finding':
+        c.criticalFindings += pushFindingCount(meta.count ?? 1);
+        c.lastAuditAt = e.timestamp;
+        break;
+      case 'high_finding':
+        c.highFindings += pushFindingCount(meta.count ?? 1);
+        c.lastAuditAt = e.timestamp;
+        break;
+      case 'medium_finding':
+        c.mediumFindings += pushFindingCount(meta.count ?? 1);
+        c.lastAuditAt = e.timestamp;
+        break;
+      case 'approve_vote':
+        c.acceptedFindings += 1;
+        break;
+      case 'dispute_vote':
+        c.disputedFindings += 1;
+        break;
+      default:
+        // If the event looks like a finding by metadata, try to coerce it
+        if (meta?.findingType === 'critical') {
+          c.criticalFindings += pushFindingCount(meta.count ?? 1);
+        } else if (meta?.findingType === 'high') {
+          c.highFindings += pushFindingCount(meta.count ?? 1);
+        } else if (meta?.findingType === 'medium') {
+          c.mediumFindings += pushFindingCount(meta.count ?? 1);
+        }
+        break;
+    }
+
+    map.set(contribId, c);
+  }
+
+  return Array.from(map.values());
 }
 
 function formatWallet(walletAddress: string | undefined, t: (key: string) => string): string {
@@ -137,8 +163,10 @@ function LeaderboardRow({ contributor, t }: { contributor: RankedAuditContributo
         <div className="min-w-0 flex-1">
           <div className="flex items-start justify-between gap-2">
             <div className="min-w-0">
-              <p className="truncate font-semibold text-slate-900 dark:text-white">
-                {contributor.displayName}
+              <p className="truncate font-semibold text-slate-900 dark:text-white flex items-center gap-2">
+                {/* avatar will be injected via DOM by parent using profile map when available */}
+                <span id={`avatar-${contributor.contributorId}`} />
+                <span>{contributor.displayName}</span>
               </p>
               <p className="truncate font-mono text-xs text-slate-500 dark:text-slate-400">
                 {formatWallet(contributor.walletAddress, t)}
@@ -180,9 +208,81 @@ function LeaderboardRow({ contributor, t }: { contributor: RankedAuditContributo
 function Leaderboard(): ReactElement {
   const { t } = useTranslation();
   const [leaderboardWindow, setLeaderboardWindow] = useState<LeaderboardWindow>('all');
+  const [contributors, setContributors] = useState<AuditContributorInput[]>([]);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [lastUpdated, setLastUpdated] = useState<Date | undefined>(undefined);
+  const mountedRef = useRef(true);
+
+  const manualRefresh = useCallback(async () => {
+    setIsRefreshing(true);
+    try {
+      const events = await readAuditLogEvents();
+      if (!mountedRef.current) return;
+      setContributors(mapEventsToContributors(events));
+      setLastUpdated(new Date());
+    } catch (error) {
+      // eslint-disable-next-line no-console
+      console.error('Unable to read audit logs for leaderboard', error);
+    } finally {
+      if (mountedRef.current) setIsRefreshing(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    void manualRefresh();
+
+    const interval = setInterval(() => {
+      void manualRefresh();
+    }, 5 * 60 * 1000); // 5 minutes
+
+    return () => {
+      mountedRef.current = false;
+      clearInterval(interval);
+    };
+  }, [manualRefresh]);
+
+  // Load contributor profiles (avatars, canonical names) and inject into DOM elements
+  useEffect(() => {
+    let mounted = true;
+    const ids = contributors.map((c) => c.contributorId);
+    if (ids.length === 0) return;
+
+    void fetchContributorProfiles(ids)
+      .then((profiles) => {
+        if (!mounted) return;
+        for (const id of Object.keys(profiles)) {
+          const p = profiles[id];
+          const container = document.getElementById(`avatar-${id}`);
+          if (!container) continue;
+          // Clear existing
+          container.innerHTML = '';
+          if (p?.avatarUrl) {
+            const img = document.createElement('img');
+            img.src = p.avatarUrl;
+            img.alt = p.displayName ?? id;
+            img.width = 28;
+            img.height = 28;
+            img.className = 'rounded-full object-cover';
+            container.appendChild(img);
+          } else if (p?.displayName) {
+            const span = document.createElement('span');
+            span.textContent = p.displayName.slice(0, 1).toUpperCase();
+            span.className = 'inline-flex h-7 w-7 items-center justify-center rounded-full bg-slate-200 text-xs font-semibold text-slate-700 dark:bg-slate-700 dark:text-slate-200';
+            container.appendChild(span);
+          }
+        }
+      })
+      .catch(() => {});
+
+    return () => {
+      mounted = false;
+    };
+  }, [contributors]);
+
   const rankedContributors = useMemo(
-    () => rankAuditContributors(filterActivityByWindow(MOCK_AUDIT_ACTIVITY, leaderboardWindow)),
-    [leaderboardWindow],
+    () => rankAuditContributors(filterActivityByWindow(contributors, leaderboardWindow)),
+    [contributors, leaderboardWindow],
   );
   const topContributor = rankedContributors[0];
   const totalAudits = useMemo(
@@ -231,6 +331,23 @@ function Leaderboard(): ReactElement {
           >
             {t('leaderboard.recent30d')}
           </button>
+          <button
+            type="button"
+            onClick={() => void manualRefresh()}
+            disabled={isRefreshing}
+            className={`ml-2 inline-flex items-center gap-2 rounded-md px-3 py-1 text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500 ${
+              isRefreshing
+                ? 'opacity-60 cursor-wait'
+                : 'text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white'
+            }`}
+            aria-label={t('leaderboard.refresh')}
+          >
+            <RefreshCw className="w-4 h-4" aria-hidden="true" />
+            {isRefreshing ? t('leaderboard.refreshing', { defaultValue: 'Refreshing...' }) : t('leaderboard.refresh')}
+          </button>
+        </div>
+        <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+          {lastUpdated ? `Updated: ${DATE_FORMATTER.format(lastUpdated)} ${lastUpdated.toLocaleTimeString()}` : ''}
         </div>
       </div>
 

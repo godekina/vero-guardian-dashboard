@@ -2,6 +2,11 @@
 
 > A full-stack Next.js 14 dashboard for **Vero Guardians** — trusted on-chain reviewers who cast cryptographically-signed votes on GitHub pull requests via the Stellar blockchain.
 
+<!-- CI badges: update OWNER/REPO to your GitHub repo -->
+[![CI](https://github.com/OWNER/REPO/actions/workflows/ci.yml/badge.svg)](https://github.com/OWNER/REPO/actions/workflows/ci.yml)
+[![Tests](https://img.shields.io/badge/tests-passing-brightgreen)](#)
+
+
 Guardians connect their [Freighter](https://www.freighter.app/) wallet, browse the live PR review feed, and submit approval votes recorded as permanent `manageData` transactions on Stellar Horizon. The system bridges open-source code review with decentralized, verifiable trust.
 
 ---

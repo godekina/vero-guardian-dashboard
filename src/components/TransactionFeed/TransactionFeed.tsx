@@ -9,6 +9,7 @@ import { useEvents } from '@/hooks/useEvents';
 import { appendAuditEvent, type AuditLogEventInput } from '@/utils/logger';
 import { useNetwork } from '@/context/NetworkContext';
 import { DEFAULT_HORIZON_URL } from '@/services/rpc';
+import ActivityLogExport from '@/components/ActivityLogExport/ActivityLogExport';
 
 /** Maximum number of transactions retained in the feed at once. */
 export const MAX_FEED_ENTRIES = 25;
@@ -206,17 +207,20 @@ export default function TransactionFeed({
           <Radio className="w-5 h-5 text-sky-600 dark:text-sky-400" aria-hidden="true" />
           {t('transactionFeed.heading')}
         </h3>
-        <span
-          role="status"
-          aria-live="polite"
-          className={`inline-flex items-center gap-2 px-2.5 py-1 rounded-full border text-xs font-semibold ${statusStyle.badge}`}
-        >
+        <div className="flex items-center gap-3">
+          <ActivityLogExport />
           <span
-            data-testid="transaction-feed-status-dot"
-            className={`w-2 h-2 rounded-full ${statusStyle.dot} ${statusStyle.pulse ? 'animate-pulse' : ''}`}
-          />
-          {t(statusStyle.labelKey)}
-        </span>
+            role="status"
+            aria-live="polite"
+            className={`inline-flex items-center gap-2 px-2.5 py-1 rounded-full border text-xs font-semibold ${statusStyle.badge}`}
+          >
+            <span
+              data-testid="transaction-feed-status-dot"
+              className={`w-2 h-2 rounded-full ${statusStyle.dot} ${statusStyle.pulse ? 'animate-pulse' : ''}`}
+            />
+            {t(statusStyle.labelKey)}
+          </span>
+        </div>
       </div>
 
       {transactions.length === 0 ? (
