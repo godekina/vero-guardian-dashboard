@@ -430,8 +430,70 @@ export default function Home(): ReactElement {
                       {t("common.active")}
                     </span>
                   </div>
-                  <p className="text-2xl font-bold text-slate-900 dark:text-white">
-                    {isConnected ? t("common.yes") : t("common.no")}
+                  <p className="text-2xl font-bold text-slate-900 dark:text-white">{isConnected ? t('common.yes') : t('common.no')}</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Dashboard Grid */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* Left Column - PR Feed */}
+          <div className="lg:col-span-2 order-2 lg:order-1">
+            <ErrorBoundary>
+              <div className="bg-white dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 sm:p-6 shadow-lg">
+                <PRFeed />
+              </div>
+            </ErrorBoundary>
+          </div>
+
+          {/* Right Column - Admin Management & Quick Actions */}
+          <div className="space-y-6">
+            <ErrorBoundary>
+              <div className="bg-white dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-lg">
+                <SessionTimer />
+              </div>
+            </ErrorBoundary>
+
+            <ErrorBoundary>
+              <div className="bg-white dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-lg">
+                <GlobalStateSearch />
+              </div>
+            </ErrorBoundary>
+
+            <ErrorBoundary>
+              <div className="bg-white dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-lg">
+                <ContractTimeTraveler />
+              </div>
+            </ErrorBoundary>
+
+            <ErrorBoundary>
+              <div className="bg-white dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-lg">
+import { ProofHistoryTable } from '@/components/ProofViewer';
+
+// Inside the JSX where AuditSessionTimer is rendered, add the component
+{/* after <AuditSessionTimer /> */}
+<ProofHistoryTable />
+              </div>
+            </ErrorBoundary>
+
+            <ErrorBoundary>
+              <TransactionFeed />
+            </ErrorBoundary>
+
+            <ErrorBoundary>
+              <div className="bg-white dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-lg">
+                <SecurityScannerResults />
+              </div>
+            </ErrorBoundary>
+
+            <AccessControl roles={['admin']}>
+              {/* Admin Management */}
+              <ErrorBoundary>
+                <div className="bg-white dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 sm:p-6 shadow-lg">
+                  <p className="text-xs font-semibold uppercase tracking-wider text-indigo-700 dark:text-indigo-400 mb-3">
+                    {t('admin.management')}
                   </p>
                 </div>
               </div>
